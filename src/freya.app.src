@@ -1,0 +1,7 @@
+{application, freya, [
+ {description, "Fast distributed scalable time series database written primarily for Cassandra"},
+ {vsn, "0.1.0"},
+ {applications, [stdlib, kernel]},
+ {registered, []},
+ {mod, {freya_app, []}}
+]}.
