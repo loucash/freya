@@ -5,15 +5,15 @@
  {registered, []},
  {mod, {freya_app, []}},
  {env, [
-    {cassandra_keyspace, "kairosdb"},
+    {cassandra_keyspace, <<"kairosdb">>},
     {cassandra_pools, [
         {freya_read_pool, [
-            {nodes, [{"localhost", 9160}]},
+            {nodes, [{"localhost", 9042}]},
             {pool_size, 50},
             {pool_overflow, 50}
         ]},
         {freya_write_pool, [
-            {nodes, [{"localhost", 9160}]},
+            {nodes, [{"localhost", 9042}]},
             {pool_size, 50},
             {pool_overflow, 50}
         ]}
