@@ -94,7 +94,8 @@ decode_timestamp(<<Offset:31/integer, _:1>>, #data_point{row_time=RowTime}=DataP
     {ok, DataPoint#data_point{ts=RowTime+Offset}}.
 
 encode_value(#data_point{type = <<"kairos_long">>, value=Value}) ->
-    {ok, binary:encode_unsigned(Value)}.
+    PackedLong = freya_utils:pack_long(Value),
+    {ok, PackedLong}.
 
 decode_value(Value, #data_point{type = <<"kairos_long">>}=DataPoint) ->
-    {ok, DataPoint#data_point{value=binary:decode_unsigned(Value)}}.
+    {ok, DataPoint#data_point{value=freya_utils:unpack_long(Value)}}.
