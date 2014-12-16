@@ -1,4 +1,4 @@
--module(freya_dm_codecs).
+-module(freya_blobs).
 
 -export([new_rowkey/3, new_rowkey/4]).
 -export([decode_rowkey/1, encode_rowkey/1]).

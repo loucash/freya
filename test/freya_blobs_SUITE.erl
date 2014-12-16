@@ -1,4 +1,4 @@
--module(freya_dm_codecs_SUITE).
+-module(freya_blobs_SUITE).
 -author('Łukasz Biedrycki <lukasz.biedrycki@gmail.com>').
 
 -export([all/0, suite/0]).
@@ -30,9 +30,9 @@ prop_encode_decode_rowkey() ->
     ?FORALL({MetricName, Timestamp, DataType, Tags},
             {metric_name(), timestamp(), data_type(), tags()},
            begin
-               RowKey = freya_dm_codecs:new_rowkey(MetricName, Timestamp, DataType, Tags),
-               {ok, Encoded} = freya_dm_codecs:encode_rowkey(RowKey),
-               {ok, RowKey2} = freya_dm_codecs:decode_rowkey(Encoded),
+               RowKey = freya_blobs:new_rowkey(MetricName, Timestamp, DataType, Tags),
+               {ok, Encoded} = freya_blobs:encode_rowkey(RowKey),
+               {ok, RowKey2} = freya_blobs:decode_rowkey(Encoded),
                RowKey =:= RowKey2
            end).
 
