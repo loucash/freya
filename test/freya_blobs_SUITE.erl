@@ -4,6 +4,7 @@
 -export([all/0, suite/0]).
 -export([t_encode_decode_rowkey/1]).
 
+-include("freya.hrl").
 -include_lib("common_test/include/ct.hrl").
 -include_lib("proper/include/proper.hrl").
 
@@ -27,13 +28,14 @@ t_encode_decode_rowkey(_Config) ->
 
 %% PropEr
 prop_encode_decode_rowkey() ->
-    ?FORALL({MetricName, Timestamp, DataType, Tags},
-            {metric_name(), timestamp(), data_type(), tags()},
+    ?FORALL({MetricName, Timestamp, DataType, Tags, Value},
+            {metric_name(), timestamp(), data_type(), tags(), value()},
            begin
-               RowKey = freya_blobs:new_rowkey(MetricName, Timestamp, DataType, Tags),
-               {ok, Encoded} = freya_blobs:encode_rowkey(RowKey),
-               {ok, RowKey2} = freya_blobs:decode_rowkey(Encoded),
-               RowKey =:= RowKey2
+               DataPoint1 = #data_point{name=MetricName, ts=Timestamp,
+                                        type=DataType, tags=Tags, value=Value},
+               {ok, {Row, Ts, Val}} = freya_blobs:encode(DataPoint1),
+               {ok, DataPoint2} = freya_blobs:decode(Row, Ts, Val),
+               DataPoint1 =:= DataPoint2#data_point{row_time=undefined}
            end).
 
 metric_name() ->
@@ -49,11 +51,11 @@ utf8_bin() ->
 timestamp() ->
     proper_types:non_neg_integer().
 
+value() ->
+    proper_types:non_neg_integer().
+
 data_type() ->
-    oneof([<<"kairos_complex">>,
-           <<"kairos_double">>,
-           <<"kairos_legacy">>,
-           <<"kairos_long">>,
-           <<"kairos_string">>]).
+    oneof([<<"kairos_long">>]).
+
 tags() ->
     list(?LET({K,V}, {utf8_bin(), utf8_bin()}, {K,V})).
