@@ -94,8 +94,40 @@ decode_timestamp(<<Offset:31/integer, _:1>>, #data_point{row_time=RowTime}=DataP
     {ok, DataPoint#data_point{ts=RowTime+Offset}}.
 
 encode_value(#data_point{type = <<"kairos_long">>, value=Value}) ->
-    PackedLong = freya_utils:pack_long(Value),
+    PackedLong = pack_long(Value),
     {ok, PackedLong}.
 
 decode_value(Value, #data_point{type = <<"kairos_long">>}=DataPoint) ->
-    {ok, DataPoint#data_point{value=freya_utils:unpack_long(Value)}}.
+    {ok, DataPoint#data_point{value=unpack_long(Value)}}.
+
+% https://developers.google.com/protocol-buffers/docs/encoding?csw=1#types
+unpack_long(ValueBin) when is_binary(ValueBin) ->
+    Value = unpack_unsigned_long(ValueBin),
+    (Value bsr 1) bxor -(Value band 1).
+
+pack_long(Value) when is_integer(Value) ->
+    pack_unsigned_long((Value bsl 1) bxor  (Value bsr 63)).
+
+pack_unsigned_long(Value) ->
+    pack_unsigned_long(Value, <<>>).
+
+pack_unsigned_long(Value, Acc) ->
+    case Value band (bnot 16#7F) of
+        0 ->
+            <<Acc/binary, Value/integer>>;
+        _ ->
+            A = (Value band 16#7F) bor 16#80,
+            pack_unsigned_long(Value bsr 7, <<Acc/binary, A/integer>>)
+    end.
+
+unpack_unsigned_long(Bin) ->
+    unpack_unsigned_long(Bin, 0, 0).
+
+unpack_unsigned_long(<<Byte:8/integer, Rest/binary>>, Shift, Result) when Shift < 64->
+    Result2 = Result bor ((Byte band 16#7F) bsl Shift),
+    case Byte band 16#80 of
+        0 ->
+            Result2;
+        _ ->
+            unpack_unsigned_long(Rest, Shift + 7, Result2)
+    end.
