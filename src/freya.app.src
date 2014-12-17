@@ -1,10 +1,13 @@
 {application, freya, [
  {description, "Fast distributed scalable time series database written primarily for Cassandra"},
  {vsn, "0.1.0"},
- {applications, [stdlib, kernel, erlcql_cluster]},
+ {applications, [stdlib, kernel, erlcql_cluster, eqm, poolboy]},
  {registered, []},
  {mod, {freya_app, []}},
  {env, [
+    {writers_size, 50},
+    {write_delay, 1000},
+    {write_batch_size, 50},
     {cassandra_keyspace, <<"kairosdb">>},
     {cassandra_pools, [
         {freya_read_pool, [

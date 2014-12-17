@@ -25,5 +25,7 @@
 
 -define(CS_READ_POOL, freya_read_pool).
 -define(CS_WRITE_POOL, freya_write_pool).
+-define(CS_WRITERS_POOL, freya_writers).
+-define(CS_WRITERS_PUB, freya_writers_pub).
 
 -define(ROW_WIDTH, {3, weeks}).
