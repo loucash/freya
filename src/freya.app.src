@@ -9,6 +9,7 @@
     {write_delay, 1000},
     {write_batch_size, 50},
     {cassandra_keyspace, <<"kairosdb">>},
+    {cassandra_consistency, quorum},
     {cassandra_pools, [
         {freya_read_pool, [
             {nodes, [{"localhost", 9042}]},

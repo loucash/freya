@@ -1,6 +1,7 @@
 -module(freya_cass_writer).
-
 -behaviour(gen_server).
+
+-include("freya.hrl").
 
 %% API
 -export([start_link/1]).
@@ -44,8 +45,20 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({mail, _, _Msgs, _}, #state{write_delay=WriteDelay}=State) ->
-    % insert batch Msgs
+handle_info({mail, _, Queries, _}, #state{write_delay=WriteDelay}=State) ->
+    {ok, Resource} = erlcql_cluster:checkout(?CS_WRITE_POOL),
+    {_, Worker} = Resource,
+    Client = erlcql_cluster_worker:get_client(Worker),
+    Res = erlcql_client:batch(Client, Queries, [consistency()]),
+    case Res of
+        {ok, _} ->
+            % log ok
+            ok;
+        {error, _Reason} ->
+            % log error
+            error
+    end,
+    erlcql_cluster:checkin(Resource),
     Timer = erlang:send_after(WriteDelay, self(), flush_buffer_timeout),
     {noreply, State#state{timer=Timer}};
 handle_info({mail, _, buffer_full}, #state{timer=TimerRef,
@@ -73,3 +86,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+consistency() ->
+    A = freya:get_env(cassandra_consistency, quorum),
+    {consistency, A}.
