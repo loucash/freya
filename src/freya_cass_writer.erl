@@ -45,7 +45,8 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({mail, _, Queries, _}, #state{write_delay=WriteDelay}=State) ->
+handle_info({mail, _, Queries0, _}, #state{write_delay=WriteDelay}=State) ->
+    Queries = lists:flatten(Queries0),
     {ok, Resource} = erlcql_cluster:checkout(?CS_WRITE_POOL),
     {_, Worker} = Resource,
     Client = erlcql_cluster_worker:get_client(Worker),
