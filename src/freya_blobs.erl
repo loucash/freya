@@ -94,11 +94,27 @@ decode_timestamp(<<Offset:31/integer, _:1>>, #data_point{row_time=RowTime}=DataP
     {ok, DataPoint#data_point{ts=RowTime+Offset}}.
 
 encode_value(#data_point{type = <<"kairos_long">>, value=Value}) ->
-    PackedLong = pack_long(Value),
-    {ok, PackedLong}.
+    {ok, pack_long(Value)};
+encode_value(#data_point{type = <<"kairos_legacy">>, value=Value}) ->
+    Long = pack_long(Value),
+    {ok, <<0:8, Long/binary>>};
+encode_value(#data_point{type = <<"kairos_double">>, value=Value}) ->
+    {ok, <<Value/float>>};
+encode_value(#data_point{type = <<"kairos_string">>, value=Value}) ->
+    {ok, Value};
+encode_value(#data_point{type = <<"kairos_complex">>, value={Real, Imag}}) ->
+    {ok, <<Real/float, Imag/float>>}.
 
 decode_value(Value, #data_point{type = <<"kairos_long">>}=DataPoint) ->
-    {ok, DataPoint#data_point{value=unpack_long(Value)}}.
+    {ok, DataPoint#data_point{value=unpack_long(Value)}};
+decode_value(<<0:8, Value/binary>>, #data_point{type = <<"kairos_legacy">>}=DataPoint) ->
+    {ok, DataPoint#data_point{value=unpack_long(Value)}};
+decode_value(<<Value/float>>, #data_point{type = <<"kairos_double">>}=DataPoint) ->
+    {ok, DataPoint#data_point{value=Value}};
+decode_value(Value, #data_point{type = <<"kairos_string">>}=DataPoint) ->
+    {ok, DataPoint#data_point{value=Value}};
+decode_value(<<Real/float, Imag/float>>, #data_point{type = <<"kairos_complex">>}=DataPoint) ->
+    {ok, DataPoint#data_point{value={Real, Imag}}}.
 
 % https://developers.google.com/protocol-buffers/docs/encoding?csw=1#types
 unpack_long(ValueBin) when is_binary(ValueBin) ->
