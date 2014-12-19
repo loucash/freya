@@ -1,4 +1,4 @@
--module(freya_cass_writer).
+-module(freya_writer).
 -behaviour(gen_server).
 
 -include("freya.hrl").
