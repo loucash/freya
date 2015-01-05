@@ -62,3 +62,6 @@ test-console: test-compile
 
 cassandra-freya:
 	$(CQLSH) < ./priv/schema.cql
+
+dev-console: compile-fast
+	$(ERL) -sname $(PROJECT) $(EPATH) -s freya
