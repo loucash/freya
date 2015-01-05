@@ -33,8 +33,8 @@ prop_encode_decode_rowkey() ->
            begin
                DataPoint1 = #data_point{name=MetricName, ts=Timestamp,
                                         type=DataType, tags=Tags, value=Value},
-               {ok, {Row, Ts, Val}} = freya_blobs:encode(DataPoint1),
-               {ok, DataPoint2} = freya_blobs:decode(Row, Ts, Val),
+               {ok, {Row, Ts, Val}} = freya_data_point:encode(DataPoint1),
+               {ok, DataPoint2} = freya_data_point:decode(Row, Ts, Val),
                DataPoint1 =:= DataPoint2#data_point{row_time=undefined}
            end).
 

@@ -28,8 +28,10 @@ start_cassandra_cluster() ->
 start_cassandra_pools([]) -> ok;
 start_cassandra_pools([{Name, Options0}|Pools]) ->
     {ok, CassandraKeyspace} = freya:get_env(cassandra_keyspace),
+    Statements = freya_writer:statements() ++
+                 freya_reader:statements(),
     Options = [{use, CassandraKeyspace},
-               {prepare, freya_writer:statements()}|Options0],
+               {prepare, Statements}|Options0],
     ok = erlcql_cluster:new(Name, Options),
     start_cassandra_pools(Pools).
 
