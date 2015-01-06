@@ -1,128 +1,138 @@
+%%%-------------------------------------------------------------------
+%%% @doc
+%%% Module with codecs for rowkey
+%%% @end
+%%%-------------------------------------------------------------------
 -module(freya_blobs).
 
 -include("freya.hrl").
 
--export([encode/1,
-         decode/3]).
+-export([encode_rowkey/4, encode_timestamp/1, encode_value/2]).
+-export([decode_rowkey/1, decode_timestamp/2, decode_value/2]).
+-export([encode_search_key/2]).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
--spec decode(binary(), binary(), binary()) ->
-    {ok, data_point()} | {error, any()}.
-decode(Row, Timestamp, Value) ->
-    Fns = [fun(DataPoint) -> decode_rowkey(Row, DataPoint) end,
-           fun(DataPoint) -> decode_timestamp(Timestamp, DataPoint) end,
-           fun(DataPoint) -> decode_value(Value, DataPoint) end],
-    hope_result:pipe(Fns, #data_point{}).
-
--spec encode(data_point()) -> {ok, {binary(), binary(), binary()}}.
-encode(#data_point{}=DataPoint) ->
-    {ok, Row}       = encode_rowkey(DataPoint),
-    {ok, Timestamp} = encode_timestamp(DataPoint),
-    {ok, Value}     = encode_value(DataPoint),
-    {ok, {Row, Timestamp, Value}}.
-
-%%%===================================================================
-%%% Internal
-%%%===================================================================
-encode_rowkey(#data_point{name=MetricName, ts=Ts, type=DataType, tags=Tags}) ->
-    RowTime = freya_utils:floor(Ts, ?ROW_WIDTH),
-    DataTypeSize = byte_size(DataType),
-    TagsBin = pack_tags(Tags),
+-spec encode_rowkey(metric_name(), milliseconds(), data_type(), data_tags()) ->
+    {ok, binary()}.
+encode_rowkey(MetricName, Ts, DataType, Tags) ->
+    RowTime         = freya_utils:floor(Ts, ?ROW_WIDTH),
+    DataTypeSize    = byte_size(DataType),
+    {ok, TagsBin}   = pack_tags(Tags),
     Bin = <<MetricName/binary, 0:8/integer, RowTime:64/integer,
             0:8/integer, DataTypeSize:8/integer, DataType/binary,
             TagsBin/binary>>,
     {ok, Bin}.
 
--spec decode_rowkey(binary(), data_point()) -> {ok, data_point()}.
-decode_rowkey(Bin0, DataPoint0) when is_binary(Bin0) ->
+-spec decode_rowkey(binary()) -> {ok, proplists:proplist()} | {error, any()}.
+decode_rowkey(Bin0) when is_binary(Bin0) ->
     Fns = [fun decode_metric_name/1,
            fun decode_row_timestamp/1,
            fun decode_datatype/1,
            fun decode_tags/1],
-    Result = hope_result:pipe(Fns, {DataPoint0, Bin0}),
+    Result = hope_result:pipe(Fns, {[], Bin0}),
     case Result of
-        {ok, {DataPoint2, _}} ->
-            {ok, DataPoint2};
+        {ok, {Parsed, _}} ->
+            {ok, Parsed};
         {error, _} = Error ->
             Error
     end.
 
-decode_metric_name({DataPoint, Bin}) ->
-    {MetricName, Rest} = extract_metric_name(Bin, []),
-    {ok, {DataPoint#data_point{name=MetricName}, Rest}}.
-
-extract_metric_name(<<0, Rest/binary>>, Acc) ->
-    {list_to_binary(lists:reverse(Acc)), Rest};
-extract_metric_name(<<H, Rest/binary>>, Acc) ->
-    extract_metric_name(Rest, [H | Acc]).
-
-decode_row_timestamp({DataPoint, <<RowTime:64, Rest/binary>>}) ->
-    {ok, {DataPoint#data_point{row_time=RowTime}, Rest}}.
-
-decode_datatype({DataPoint, <<0, Len:8/integer, DataType:Len/binary-unit:8, Rest/binary>>}) ->
-    {ok, {DataPoint#data_point{type=DataType}, Rest}};
-decode_datatype({DataPoint, Rest}) ->
-    {ok, {DataPoint, Rest}}.
-
-decode_tags({DataPoint, <<>>=Bin}) ->
-    {ok, {DataPoint, Bin}};
-decode_tags({DataPoint, Bin}) ->
-    Tags = unpack_tags(Bin),
-    {ok, {DataPoint#data_point{tags=Tags}, Bin}}.
-
-unpack_tags(Bin) ->
-    lists:map(
-      fun([K, V]) -> {K, V} end,
-      lists:filtermap(
-        fun(<<>>) -> false;
-           (KV) -> {true, binary:split(KV, <<"=">>)} end,
-        binary:split(Bin, <<":">>, [global]))).
-
-pack_tags([]) -> <<>>;
-pack_tags(Tags) when is_list(Tags) ->
-    KVs = lists:map(fun({K, V}) -> <<K/binary, "=", V/binary>> end, Tags),
-    bstr:join(KVs, <<":">>).
-
-encode_timestamp(#data_point{ts=Ts}) ->
+-spec encode_timestamp(milliseconds()) -> {ok, binary()}.
+encode_timestamp(Ts) ->
     RowTime = freya_utils:floor(Ts, ?ROW_WIDTH),
     Offset = Ts - RowTime,
     {ok, <<Offset:31/integer, 0:1>>}.
 
-decode_timestamp(<<Offset:31/integer, _:1>>, #data_point{row_time=RowTime}=DataPoint) ->
-    {ok, DataPoint#data_point{ts=RowTime+Offset}}.
+-spec decode_timestamp(binary(), milliseconds()) -> {ok, milliseconds()}.
+decode_timestamp(<<Offset:31/integer, _:1>>, RowTime) ->
+    {ok, RowTime+Offset}.
 
-encode_value(#data_point{type = <<"kairos_long">>, value=Value}) ->
+-spec encode_value(binary(), any()) -> {ok, binary()}.
+encode_value(<<"kairos_long">>, Value) ->
     {ok, pack_long(Value)};
-encode_value(#data_point{type = <<"kairos_legacy">>, value=Value}) ->
+encode_value(<<"kairos_legacy">>, Value) ->
     Long = pack_long(Value),
     {ok, <<0:8, Long/binary>>};
-encode_value(#data_point{type = <<"kairos_double">>, value=Value}) ->
+encode_value(<<"kairos_double">>, Value) ->
     {ok, <<Value/float>>};
-encode_value(#data_point{type = <<"kairos_string">>, value=Value}) ->
+encode_value(<<"kairos_string">>, Value) ->
     {ok, Value};
-encode_value(#data_point{type = <<"kairos_complex">>, value={Real, Imag}}) ->
+encode_value(<<"kairos_complex">>, {Real, Imag}) ->
     {ok, <<Real/float, Imag/float>>}.
 
-decode_value(Value, #data_point{type = <<"kairos_long">>}=DataPoint) ->
-    {ok, DataPoint#data_point{value=unpack_long(Value)}};
-decode_value(<<0:8, Value/binary>>, #data_point{type = <<"kairos_legacy">>}=DataPoint) ->
-    {ok, DataPoint#data_point{value=unpack_long(Value)}};
-decode_value(<<Value/float>>, #data_point{type = <<"kairos_double">>}=DataPoint) ->
-    {ok, DataPoint#data_point{value=Value}};
-decode_value(Value, #data_point{type = <<"kairos_string">>}=DataPoint) ->
-    {ok, DataPoint#data_point{value=Value}};
-decode_value(<<Real/float, Imag/float>>, #data_point{type = <<"kairos_complex">>}=DataPoint) ->
-    {ok, DataPoint#data_point{value={Real, Imag}}}.
+-spec decode_value(any(), binary()) -> {ok, any()}.
+decode_value(Value, <<"kairos_long">>) ->
+    {ok, unpack_long(Value)};
+decode_value(<<0:8, Value/binary>>, <<"kairos_legacy">>) ->
+    {ok, unpack_long(Value)};
+decode_value(<<Value/float>>, <<"kairos_double">>) ->
+    {ok, Value};
+decode_value(Value, <<"kairos_string">>) ->
+    {ok, Value};
+decode_value(<<Real/float, Imag/float>>, <<"kairos_complex">>) ->
+    {ok, {Real, Imag}}.
+
+-spec encode_search_key(metric_name(), milliseconds()) -> {ok, binary()}.
+encode_search_key(MetricName, Ts) ->
+    RowTime = freya_utils:floor(Ts, ?ROW_WIDTH),
+    Bin = <<MetricName/binary, 0:8/integer, RowTime:64/integer>>,
+    {ok, Bin}.
+
+%%%===================================================================
+%%% Internal
+%%%===================================================================
+decode_metric_name({Props, Bin}) ->
+    case extract_metric_name(Bin, []) of
+        {ok, {MetricName, Rest}} ->
+            {ok, {[{name, MetricName}|Props], Rest}};
+        {error, _} = Error ->
+            Error
+    end.
+
+extract_metric_name(<<0, Rest/binary>>, Acc) ->
+    {ok, {list_to_binary(lists:reverse(Acc)), Rest}};
+extract_metric_name(<<H, Rest/binary>>, Acc) ->
+    extract_metric_name(Rest, [H | Acc]);
+extract_metric_name(<<>>, _Acc) ->
+    {error, invalid_blob}.
+
+decode_row_timestamp({Props, <<RowTime:64, Rest/binary>>}) ->
+    {ok, {[{row_time, RowTime}|Props], Rest}}.
+
+decode_datatype({Props, <<0, Len:8/integer, DataType:Len/binary-unit:8, Rest/binary>>}) ->
+    {ok, {[{type, DataType}|Props], Rest}};
+decode_datatype({Props, Rest}) ->
+    {ok, {Props, Rest}}.
+
+decode_tags({Props, <<>>=Bin}) ->
+    {ok, {Props, Bin}};
+decode_tags({Props, Bin}) ->
+    {ok, Tags} = unpack_tags(Bin),
+    {ok, {[{tags,Tags}|Props], Bin}}.
+
+pack_tags([]) -> {ok, <<>>};
+pack_tags(Tags) when is_list(Tags) ->
+    KVs = lists:map(fun({K, V}) -> <<K/binary, "=", V/binary>> end, Tags),
+    {ok, bstr:join(KVs, <<":">>)}.
+
+unpack_tags(Bin) ->
+    Res = lists:map(
+            fun([K, V]) -> {K, V} end,
+            lists:filtermap(
+              fun(<<>>) -> false;
+                 (KV) -> {true, binary:split(KV, <<"=">>)} end,
+              binary:split(Bin, <<":">>, [global]))),
+    {ok, Res}.
 
 % https://developers.google.com/protocol-buffers/docs/encoding?csw=1#types
+pack_long(Value) when is_integer(Value) ->
+    pack_unsigned_long((Value bsl 1) bxor  (Value bsr 63)).
+
 unpack_long(ValueBin) when is_binary(ValueBin) ->
     Value = unpack_unsigned_long(ValueBin),
     (Value bsr 1) bxor -(Value band 1).
-
-pack_long(Value) when is_integer(Value) ->
-    pack_unsigned_long((Value bsl 1) bxor  (Value bsr 63)).
 
 pack_unsigned_long(Value) ->
     pack_unsigned_long(Value, <<>>).

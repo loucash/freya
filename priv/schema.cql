@@ -1,3 +1,5 @@
+DROP KEYSPACE IF EXISTS freya;
+
 CREATE KEYSPACE freya WITH replication = {
   'class': 'SimpleStrategy',
   'replication_factor': '1'
@@ -6,22 +8,22 @@ CREATE KEYSPACE freya WITH replication = {
 USE freya;
 
 CREATE TABLE data_points (
-  key blob,
-  column1 blob,
+  rowkey blob,
+  offset blob,
   value blob,
-  PRIMARY KEY ((key), column1)
-) read_repair_chance=0.100000;
+  PRIMARY KEY (rowkey, offset)
+) WITH read_repair_chance=0.100000;
 
 CREATE TABLE row_key_index (
-  key blob,
-  column1 blob,
-  value blob,
-  PRIMARY KEY ((key), column1)
-) read_repair_chance=0.100000;
+  metric_name blob,
+  rowkey blob,
+  unused blob,
+  PRIMARY KEY (metric_name, rowkey)
+) WITH read_repair_chance=0.100000;
 
 CREATE TABLE string_index (
-  key blob,
-  column1 text,
-  value blob,
-  PRIMARY KEY ((key), column1)
-) read_repair_chance=0.100000;
+  type blob,
+  value text,
+  unused blob,
+  PRIMARY KEY (type, value)
+) WITH read_repair_chance=0.100000;

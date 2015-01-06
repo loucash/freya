@@ -1,3 +1,8 @@
+%%%-------------------------------------------------------------------
+%%% @doc
+%%% Worker responsible for batch insert of data points into cassandra
+%%% @end
+%%%-------------------------------------------------------------------
 -module(freya_writer).
 -behaviour(gen_server).
 
@@ -28,19 +33,20 @@
 statements() ->
     [
      {?INSERT_DATA_POINT_TTL,
-      <<"INSERT INTO data_points (key, column1, value) "
+      <<"INSERT INTO data_points (rowkey, offset, value) "
         "VALUES (?, ?, ?) USING TTL ?;">>},
      {?INSERT_DATA_POINT,
-      <<"INSERT INTO data_points (key, column1, value) "
+      <<"INSERT INTO data_points (rowkey, offset, value) "
         "VALUES (?, ?, ?);">>},
      {?INSERT_ROW_INDEX,
-      <<"INSERT INTO row_key_index (key, column1, value) "
+      <<"INSERT INTO row_key_index (metric_name, rowkey, unused) "
         "VALUES (?, ?, ?);">>},
      {?INSERT_STRING_INDEX,
-      <<"INSERT INTO string_index (key, column1, value) "
+      <<"INSERT INTO string_index (type, value, unused) "
         "VALUES (?, ?, ?);">>}
     ].
 
+-spec save(eqm:pub(), data_point()) -> ok | {error, no_capacity}.
 save(Publisher, #data_point{}=DP) ->
     Qrys = save_data_point_queries(DP),
     eqm_pub:post(Publisher, Qrys).
@@ -68,8 +74,7 @@ handle_cast(_Msg, State) ->
 
 handle_info({mail, _, Queries0, _}, #state{write_delay=WriteDelay}=State) ->
     Queries = lists:flatten(Queries0),
-    {ok, Resource} = erlcql_cluster:checkout(?CS_WRITE_POOL),
-    {_, Worker} = Resource,
+    {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(?CS_WRITE_POOL),
     Client = erlcql_cluster_worker:get_client(Worker),
     Res = erlcql_client:batch(Client, Queries, [consistency()]),
     case Res of
@@ -109,16 +114,17 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 consistency() ->
-    A = freya:get_env(cassandra_consistency, quorum),
+    A = freya:get_env(cassandra_write_consistency, quorum),
     {consistency, A}.
 
+-spec save_data_point_queries(data_point()) -> list().
 save_data_point_queries(#data_point{}=DP) ->
-    {ok, {Row, Column, Value}} = freya_blobs:encode(DP),
+    {ok, {Row, Column, Value}} = freya_data_point:encode(DP),
     [{?INSERT_DATA_POINT, [Row, Column, Value]},
      {?INSERT_ROW_INDEX, [DP#data_point.name, Row, <<0>>]},
      {?INSERT_STRING_INDEX, [?ROW_KEY_METRIC_NAMES, DP#data_point.name, <<0>>]}]
     ++ lists:flatmap(
-         fun(TagName, TagValue) ->
+         fun({TagName, TagValue}) ->
             [{?INSERT_STRING_INDEX, [?ROW_KEY_TAG_NAMES, TagName, <<0>>]},
              {?INSERT_STRING_INDEX, [?ROW_KEY_TAG_VALUES, TagValue, <<0>>]}]
          end, DP#data_point.tags).

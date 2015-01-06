@@ -5,6 +5,7 @@ EPATH = -pa ebin -pz deps/*/ebin
 TEST_EPATH = -pz deps/*/ebin -I deps/proper/include -pa ebin -pa test
 PLT_APPS = $(shell ls $(ERL_LIB_DIR) | grep -v interface | sed -e 's/-[0-9.]*//')
 DIALYZER_OPTS= -Wno_undefined_callbacks --fullpath
+CQLSH = cqlsh
 
 .PHONY: all build_plt compile configure console deps doc clean depclean distclean dialyze release telstart test test-console
 
@@ -58,3 +59,6 @@ test:
 test-console: test-compile
 	@erlc $(TEST_EPATH) -o test test/*.erl
 	$(ERL) -sname $(PROJECT)_test  $(TEST_EPATH)
+
+cassandra-freya:
+	$(CQLSH) < ./priv/schema.cql
