@@ -9,8 +9,7 @@ CQLSH = cqlsh
 
 .PHONY: all build_plt compile configure console deps doc clean depclean distclean dialyze release telstart test test-console
 
-all:
-	@./rebar skip_deps=true compile
+all: deps compile cassandra-freya
 
 build_plt:
 	@dialyzer --build_plt --apps $(PLT_APPS)
@@ -28,7 +27,7 @@ console:
 	$(ERL) -sname $(PROJECT) $(EPATH)
 
 deps:
-	@./rebar get-deps update-deps
+	@./rebar get-deps
 
 doc:
 	@./rebar skip_deps=true doc
@@ -53,7 +52,7 @@ dialyze:
 start:
 	$(ERL) -sname $(PROJECT) $(EPATH) -s $(PROJECT)
 
-test:
+test: compile-fast cassandra-freya
 	@./rebar skip_deps=true ct verbose=1
 
 test-console: test-compile
@@ -62,3 +61,10 @@ test-console: test-compile
 
 cassandra-freya:
 	$(CQLSH) < ./priv/schema.cql
+
+dev: compile-fast dev-console
+
+dev-clean: cassandra-freya dev
+
+dev-console:
+	$(ERL) -sname $(PROJECT) $(EPATH) -s freya

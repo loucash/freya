@@ -13,14 +13,14 @@ start(_StartType, _StartArgs) ->
     {ok, Publisher} = eqm:start_publisher(?CS_WRITERS_PUB),
     ok = start_cassandra_cluster(),
     ok = start_cass_writers_pool(Publisher),
+    ok = freya_tcp:start(Publisher),
     freya_sup:start_link().
 
 stop(_State) ->
     ok.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
+
+
 start_cassandra_cluster() ->
     {ok, CassandraPools} = freya:get_env(cassandra_pools),
     start_cassandra_pools(CassandraPools).

@@ -1,7 +1,8 @@
 -module(freya_io_SUITE).
 
 -export([all/0, suite/0, init_per_suite/1, end_per_suite/1]).
--export([t_write_read_data_point/1]).
+-export([t_write_read_data_point/1,
+         t_tcp_version/1]).
 
 -include("freya.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -12,7 +13,8 @@ suite() ->
 
 all() ->
     [
-     t_write_read_data_point
+     t_write_read_data_point,
+     t_tcp_version
     ].
 
 init_per_suite(Config) ->
@@ -36,3 +38,9 @@ t_write_read_data_point(_Config) ->
     erlcql_cluster:checkin(Resource),
     true = DP1 =:= DP2,
     ok.
+
+t_tcp_version(_Config) ->
+    {ok, Client} = freya_tcp_client:start_link(),
+    {ok, Vsn} = freya:version(),
+    {ok, Vsn} = freya_tcp_client:version(Client),
+    {ok, Vsn} = freya_tcp_client:version(Client).

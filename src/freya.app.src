@@ -1,7 +1,8 @@
 {application, freya, [
  {description, "Fast distributed scalable time series database written primarily for Cassandra"},
  {vsn, "0.1.0"},
- {applications, [stdlib, kernel, erlcql_cluster, eqm, poolboy]},
+ {applications, [stdlib, kernel, lager, ranch, erlcql_cluster, eqm, poolboy,
+tic, kvlists]},
  {registered, []},
  {mod, {freya_app, []}},
  {env, [
@@ -14,13 +15,13 @@
     {cassandra_pools, [
         {freya_read_pool, [
             {nodes, [{"localhost", 9042}]},
-            {pool_size, 50},
-            {pool_overflow, 50}
+            {pool_size, 10},
+            {pool_overflow, 0}
         ]},
         {freya_write_pool, [
             {nodes, [{"localhost", 9042}]},
-            {pool_size, 50},
-            {pool_overflow, 50}
+            {pool_size, 10},
+            {pool_overflow, 0}
         ]}
     ]}
  ]}
