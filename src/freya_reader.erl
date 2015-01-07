@@ -10,6 +10,8 @@
 -export([statements/0]).
 -export([search/3, search/4, search/5]).
 
+-export([do_search_data_points/3]).
+
 % exported for tests
 -export([read_row_size/0]).
 
@@ -196,24 +198,24 @@ matching_tags(RowTags) ->
     end.
 
 search_data_points(Pool, #search{}=S, Rows) ->
-    do_search_data_points(Pool, S, Rows, []).
+    Results0 = rpc:pmap({?MODULE, do_search_data_points},
+                        [Pool, S], Rows),
+    Results1 = lists:foldl(fun({error, _}=Error, _) -> Error;
+                              (_, {error, _}=Error) -> Error;
+                              ({ok, DataPoints}, Acc) -> [DataPoints|Acc] end,
+                           [], Results0),
+    case Results1 of
+        {error, _} = Error -> Error;
+        _ -> {ok, lists:flatten(lists:reverse(Results1))}
+    end.
 
-do_search_data_points(_Pool, _S, [], []) ->
-    {error, not_found};
-do_search_data_points(_Pool, _S, [], Acc) ->
-    {ok, lists:flatten(lists:reverse(Acc))};
-do_search_data_points(Pool, S, [{RowKey, RowProps}|Rows], Acc) ->
+do_search_data_points({RowKey, RowProps}, Pool, S) ->
     {ok, RowProps} = freya_blobs:decode_rowkey(RowKey),
     {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(Pool),
     Client = erlcql_cluster_worker:get_client(Worker),
     Result = query_data_points(Client, S, RowKey, RowProps),
     erlcql_cluster:checkin(Resource),
-    case Result of
-        {ok, DataPoints} ->
-            do_search_data_points(Pool, S, Rows, [DataPoints|Acc]);
-        {error, _} = Error ->
-            Error
-    end.
+    Result.
 
 query_data_points(Client, S, RowKey, RowProps) ->
     query_data_points(Client, S, RowKey, RowProps, []).
