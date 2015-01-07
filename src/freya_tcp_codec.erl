@@ -10,4 +10,3 @@ encode(Term) ->
 -spec decode(binary()) -> term().
 decode(Data) ->
     binary_to_term(Data).
-
