@@ -52,7 +52,7 @@ dialyze:
 start:
 	$(ERL) -sname $(PROJECT) $(EPATH) -s $(PROJECT)
 
-test:
+test: compile-fast cassandra-freya
 	@./rebar skip_deps=true ct verbose=1
 
 test-console: test-compile
@@ -63,6 +63,8 @@ cassandra-freya:
 	$(CQLSH) < ./priv/schema.cql
 
 dev: compile-fast dev-console
+
+dev-clean: cassandra-freya dev
 
 dev-console:
 	$(ERL) -sname $(PROJECT) $(EPATH) -s freya
