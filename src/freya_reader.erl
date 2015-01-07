@@ -10,6 +10,9 @@
 -export([statements/0]).
 -export([search/3, search/4, search/5]).
 
+% exported for tests
+-export([read_row_size/0]).
+
 -type option()  :: {aggregate, aggregate()} |
                    {precision, precision()} |
                    {aligned,   boolean()}.
@@ -33,54 +36,55 @@
 statements() ->
     [
      {?SELECT_ROWS_FROM_START,
-      <<"SELECT rowkey FROM row_key_index WHERE metric_name = ? AND rowkey >= ?;">>},
+      <<"SELECT rowkey FROM row_key_index WHERE "
+        "metric_name = ? AND rowkey >= ?;">>},
      {?SELECT_ROWS_IN_RANGE,
       <<"SELECT rowkey FROM row_key_index WHERE "
         "metric_name = ? AND rowkey >= ? AND rowkey <= ?;">>},
      {?SELECT_DATA_FROM_START,
       <<"SELECT offset, value FROM data_points WHERE "
-        "rowkey = ? AND offset >= ?;">>},
+        "rowkey = ? AND offset >= ? LIMIT ?;">>},
      {?SELECT_DATA_IN_RANGE,
       <<"SELECT offset, value FROM data_points WHERE "
-        "rowkey = ? AND offset >= ? AND offset <= ?;">>}
+        "rowkey = ? AND offset >= ? AND offset <= ? LIMIT ?;">>}
     ].
 
--spec search(pid(), metric_name(), milliseconds()) -> {ok, list()}.
-search(Client, MetricName, StartTime) when is_pid(Client),
-                                           is_binary(MetricName),
-                                           is_integer(StartTime) ->
-    search(Client, MetricName, StartTime, []).
+-spec search(pool_name(), metric_name(), milliseconds()) -> {ok, list()}.
+search(Pool, MetricName, StartTime) when is_atom(Pool),
+                                         is_binary(MetricName),
+                                         is_integer(StartTime) ->
+    search(Pool, MetricName, StartTime, []).
 
--spec search(pid(), metric_name(), milliseconds(),
+-spec search(pool_name(), metric_name(), milliseconds(),
              milliseconds() | options()) -> {ok, list()}.
-search(Client, MetricName, StartTime, Options) when is_pid(Client),
-                                                    is_binary(MetricName),
-                                                    is_integer(StartTime),
-                                                    is_list(Options) ->
+search(Pool, MetricName, StartTime, Options) when is_atom(Pool),
+                                                  is_binary(MetricName),
+                                                  is_integer(StartTime),
+                                                  is_list(Options) ->
     case verify_options(Options, #search{metric_name=MetricName, start_time=StartTime}) of
         {ok, Search} ->
-            do_search(Client, Search);
+            do_search(Pool, Search);
         {error, _} = Error ->
             Error
     end;
 
-search(Client, MetricName, StartTime, EndTime) when is_pid(Client),
-                                                    is_binary(MetricName),
-                                                    is_integer(StartTime),
-                                                    is_integer(EndTime) ->
-    search(Client, MetricName, StartTime, EndTime, []).
+search(Pool, MetricName, StartTime, EndTime) when is_atom(Pool),
+                                                  is_binary(MetricName),
+                                                  is_integer(StartTime),
+                                                  is_integer(EndTime) ->
+    search(Pool, MetricName, StartTime, EndTime, []).
 
--spec search(pid(), metric_name(), milliseconds(), milliseconds(), options()) -> {ok, list()}.
-search(Client, MetricName, StartTime, EndTime, Options) when is_pid(Client),
-                                                             is_binary(MetricName),
-                                                             is_integer(StartTime),
-                                                             is_integer(EndTime),
-                                                             is_list(Options) ->
+-spec search(pool_name(), metric_name(), milliseconds(), milliseconds(), options()) -> {ok, list()}.
+search(Pool, MetricName, StartTime, EndTime, Options) when is_atom(Pool),
+                                                           is_binary(MetricName),
+                                                           is_integer(StartTime),
+                                                           is_integer(EndTime),
+                                                           is_list(Options) ->
     case verify_options(Options, #search{metric_name=MetricName,
                                          start_time=StartTime,
                                          end_time=EndTime}) of
         {ok, Search} ->
-            do_search(Client, Search);
+            do_search(Pool, Search);
         {error, _} = Error ->
             Error
     end.
@@ -107,6 +111,8 @@ verify_options([{precision, {Val, Type}}|Options], Search) when is_integer(Val) 
         false ->
             {error, bad_precision}
     end;
+verify_options([{tags, Tags}|Options], Search) when is_list(Tags) ->
+    verify_options(Options, Search#search{tags=Tags});
 verify_options([Opt|_], _) ->
     {error, {bad_option, Opt}}.
 
@@ -114,15 +120,22 @@ consistency() ->
     A = freya:get_env(cassandra_read_consistency, quorum),
     {consistency, A}.
 
-do_search(Client, #search{}=S) ->
+do_search(Pool, #search{}=S) ->
     Fns = [
-        fun(_)       -> search_rows(Client, S)                  end,
-        fun(RowKeys) -> search_data_points(Client, S, RowKeys)  end
+        fun(_)    -> search_rows(Pool, S) end,
+        fun(Rows) -> decode_rowkeys(Rows) end,
+        fun(Rows) -> filter_row_tags(S, Rows) end,
+        fun(Rows) -> search_data_points(Pool, S, Rows) end
     ],
     hope_result:pipe(Fns, undefined).
 
-search_rows(Client, Search) ->
-    case do_search_rows(Client, Search) of
+%% @doc Return rowkeys indexes in row_key_index
+search_rows(Pool, Search) ->
+    {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(Pool),
+    Client = erlcql_cluster_worker:get_client(Worker),
+    Result = do_search_rows(Client, Search),
+    erlcql_cluster:checkin(Resource),
+    case Result of
         {ok, {[], _}} -> {error, not_found};
         {ok, {RowKeys, _}} -> {ok, lists:flatten(RowKeys)};
         {error, _} = Error -> Error
@@ -144,18 +157,58 @@ do_search_rows(Client, #search{metric_name=MetricName,
                           [MetricName, StartTsBin, EndTsBin],
                           [consistency()]).
 
-search_data_points(Client, #search{}=S, RowKeys) ->
-    do_search_data_points(Client, S, RowKeys, []).
+%% @doc Return tuples with original and decoded rowkey
+decode_rowkeys(RowKeys) ->
+    Rows = lists:map(
+             fun(RowKey) ->
+                {ok, RowProps} = freya_blobs:decode_rowkey(RowKey),
+                {RowKey, RowProps}
+             end, RowKeys),
+    {ok, Rows}.
 
-do_search_data_points(_Client, _S, [], []) ->
+%% @doc Drop rows that does not match tags in a search query
+filter_row_tags(#search{tags=[]}, Rows) -> {ok, Rows};
+filter_row_tags(#search{tags=undefined}, Rows) -> {ok, Rows};
+filter_row_tags(#search{tags=Tags}, Rows) ->
+    {ok, lists:filter(match_row_fun(Tags), Rows)}.
+
+%% @doc Return a function to filter each rowkey
+match_row_fun(Tags) ->
+    MatchTagFuns = lists:map(fun match_tag_fun/1, Tags),
+    fun({_RowKey, RowProps}) ->
+        RowTags = proplists:get_value(tags, RowProps),
+        lists:all(matching_tags(RowTags), MatchTagFuns)
+    end.
+
+%% @doc Return a function to match two tags
+match_tag_fun({FilterKey, FilterValue}) ->
+    fun({Key, Value}) when FilterKey   =:= Key andalso
+                           FilterValue =:= Value -> true;
+       (_) -> false
+    end.
+
+%% @doc Return a function to match at row tags
+matching_tags(RowTags) ->
+    fun(MatchFun) ->
+        lists:any(MatchFun, RowTags)
+    end.
+
+search_data_points(Pool, #search{}=S, Rows) ->
+    do_search_data_points(Pool, S, Rows, []).
+
+do_search_data_points(_Pool, _S, [], []) ->
     {error, not_found};
-do_search_data_points(_Client, _S, [], Acc) ->
+do_search_data_points(_Pool, _S, [], Acc) ->
     {ok, lists:flatten(lists:reverse(Acc))};
-do_search_data_points(Client, S, [RowKey|RowKeys], Acc) ->
+do_search_data_points(Pool, S, [{RowKey, RowProps}|Rows], Acc) ->
     {ok, RowProps} = freya_blobs:decode_rowkey(RowKey),
-    case query_data_points(Client, S, RowKey, RowProps) of
+    {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(Pool),
+    Client = erlcql_cluster_worker:get_client(Worker),
+    Result = query_data_points(Client, S, RowKey, RowProps),
+    erlcql_cluster:checkin(Resource),
+    case Result of
         {ok, DataPoints} ->
-            do_search_data_points(Client, S, RowKeys, [DataPoints|Acc]);
+            do_search_data_points(Pool, S, Rows, [DataPoints|Acc]);
         {error, _} = Error ->
             Error
     end.
@@ -167,15 +220,19 @@ query_data_points(Client, #search{start_time=StartTime,
     {ok, StartOffsetBin} = freya_blobs:encode_timestamp(MaxTime),
     case erlcql_client:execute(Client,
                                ?SELECT_DATA_FROM_START,
-                               [RowKey, StartOffsetBin],
+                               [RowKey, StartOffsetBin, ?MODULE:read_row_size()],
                                [consistency()]) of
-        {ok, {[], _}} -> [];
+        {ok, {[], _}} -> {ok, []};
         {ok, {BinDataPoints, _}} ->
             DataPoints = lists:map(to_data_point(RowProps), BinDataPoints),
             {ok, DataPoints};
         {error, _} = Error ->
             Error
     end.
+
+read_row_size() ->
+    {ok, ReadRowSize} = freya:get_env(read_row_size),
+    ReadRowSize.
 
 to_data_point(RowProps0) ->
     RowTime  = proplists:get_value(row_time, RowProps0),

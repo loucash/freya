@@ -6,7 +6,7 @@
 -module(freya_data_point).
 -include("freya.hrl").
 
--export([new/0, new/4, of_props/1]).
+-export([new/0, new/4, new/5, of_props/1]).
 -export([encode/1, decode/3]).
 
 -define(blobs, freya_blobs).
@@ -20,10 +20,15 @@ new() ->
 
 -spec new(metric_name(), milliseconds(), data_type(), data_value()) -> data_point().
 new(MetricName, Ts, Type, Value) ->
+    new(MetricName, Ts, Type, Value, []).
+
+-spec new(metric_name(), milliseconds(), data_type(), data_value(), data_tags()) -> data_point().
+new(MetricName, Ts, Type, Value, Tags) ->
     #data_point{name        = MetricName,
                 ts          = Ts,
                 type        = Type,
                 value       = Value,
+                tags        = Tags,
                 row_time    = freya_utils:floor(Ts, ?ROW_WIDTH)}.
 
 -spec of_props(proplists:proplist()) -> data_point().
