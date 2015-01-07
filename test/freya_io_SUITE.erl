@@ -2,6 +2,8 @@
 
 -export([all/0, suite/0, init_per_suite/1, end_per_suite/1]).
 -export([t_write_read_data_point/1,
+         t_write_read_different_rows/1,
+         t_read_row_size/1,
          t_filter_tags_1/1,
          t_filter_tags_2/1,
          t_tcp_version/1]).
@@ -9,6 +11,7 @@
 -include("freya.hrl").
 -include_lib("common_test/include/ct.hrl").
 
+-define(th, test_helpers).
 
 suite() ->
     [{timetrap, {seconds, 40}}].
@@ -16,6 +19,8 @@ suite() ->
 all() ->
     [
      t_write_read_data_point,
+     t_write_read_different_rows,
+     t_read_row_size,
      t_filter_tags_1,
      t_filter_tags_2,
      t_tcp_version
@@ -31,18 +36,49 @@ end_per_suite(_Config) ->
 
 t_write_read_data_point(_Config) ->
     {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
-    MetricName  = <<"test_write_read_data_point">>,
+    MetricName  = ?th:randomize(<<"test_write_read_data_point">>),
     Ts = tic:now_to_epoch_msecs(),
     DPIn = freya_data_point:new(MetricName, Ts, <<"kairos_long">>, 1),
     ok = freya_writer:save(Publisher, DPIn),
     timer:sleep(2000),
-    {ok, [DPOut]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts-1),
-    true = DPIn =:= DPOut,
+    {ok, [DPIn]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts-1),
+    ok.
+
+t_write_read_different_rows(_Config) ->
+    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    MetricName  = ?th:randomize(<<"test_write_read_different_rows">>),
+    Ts1 = tic:now_to_epoch_msecs(),
+    Ts2 = tic:now_to_epoch_msecs() + freya_utils:ms({8, weeks})+1,
+    DPIn1 = freya_data_point:new(MetricName, Ts1, <<"kairos_long">>, 1),
+    DPIn2 = freya_data_point:new(MetricName, Ts2, <<"kairos_long">>, 1),
+    ok = freya_writer:save(Publisher, DPIn1),
+    ok = freya_writer:save(Publisher, DPIn2),
+    timer:sleep(2000),
+    {ok, [DPIn1, DPIn2]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts1-1),
+    ok.
+
+t_read_row_size(_Config) ->
+    meck:new(freya_reader, [passthrough]),
+    meck:expect(freya_reader, read_row_size, fun() -> 2 end),
+    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    MetricName  = ?th:randomize(<<"test_read_row_size">>),
+    Ts = tic:now_to_epoch_msecs(),
+    DPIn1 = freya_data_point:new(MetricName, Ts+1, <<"kairos_long">>, 1),
+    DPIn2 = freya_data_point:new(MetricName, Ts+2, <<"kairos_long">>, 1),
+    DPIn3 = freya_data_point:new(MetricName, Ts+3, <<"kairos_long">>, 1),
+    DPIn4 = freya_data_point:new(MetricName, Ts+4, <<"kairos_long">>, 1),
+    ok = freya_writer:save(Publisher, DPIn1),
+    ok = freya_writer:save(Publisher, DPIn2),
+    ok = freya_writer:save(Publisher, DPIn3),
+    ok = freya_writer:save(Publisher, DPIn4),
+    timer:sleep(2500),
+    {ok, [DPIn1, DPIn2, DPIn3, DPIn4]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts-1),
+    meck:unload(),
     ok.
 
 t_filter_tags_1(_Config) ->
     {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
-    MetricName = <<"test_filter_tags_1">>,
+    MetricName = ?th:randomize(<<"test_filter_tags_1">>),
     Ts = tic:now_to_epoch_msecs(),
     DPIn1 = freya_data_point:new(MetricName, Ts, <<"kairos_long">>, 1,
                                  [{<<"foo">>, <<"bar">>}]),
@@ -51,23 +87,21 @@ t_filter_tags_1(_Config) ->
     ok = freya_writer:save(Publisher, DPIn1),
     ok = freya_writer:save(Publisher, DPIn2),
     timer:sleep(2000),
-    {ok, [DPOut]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts-1,
+    {ok, [DPIn1]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts-1,
                                         [{tags, [{<<"foo">>, <<"bar">>}]}]),
-    true = DPIn1 =:= DPOut,
     ok.
 
 t_filter_tags_2(_Config) ->
     {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
-    MetricName = <<"test_filter_tags_2">>,
+    MetricName = ?th:randomize(<<"test_filter_tags_2">>),
     Ts = tic:now_to_epoch_msecs(),
     DPIn = freya_data_point:new(MetricName, Ts, <<"kairos_long">>, 1,
                                 [{<<"foo">>, <<"bar">>},
                                  {<<"baz">>, <<"fox">>}]),
     ok = freya_writer:save(Publisher, DPIn),
     timer:sleep(2000),
-    {ok, [DPOut]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts-1,
-                                        [{tags, [{<<"foo">>, <<"bar">>}]}]),
-    true = DPIn =:= DPOut,
+    {ok, [DPIn]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts-1,
+                                       [{tags, [{<<"foo">>, <<"bar">>}]}]),
     ok.
 
 t_tcp_version(_Config) ->

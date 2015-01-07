@@ -116,10 +116,11 @@ verify_options([{tags, Tags}|Options], Search) when is_list(Tags) ->
 verify_options([Opt|_], _) ->
     {error, {bad_option, Opt}}.
 
-consistency() ->
+read_consistency() ->
     A = freya:get_env(cassandra_read_consistency, quorum),
     {consistency, A}.
 
+%% @doc Performs all steps of reading data from cassandra
 do_search(Pool, #search{}=S) ->
     Fns = [
         fun(_)    -> search_rows(Pool, S) end,
@@ -141,13 +142,14 @@ search_rows(Pool, Search) ->
         {error, _} = Error -> Error
     end.
 
+%% @doc Return query execute result
 do_search_rows(Client, #search{metric_name=MetricName,
                                start_time=StartTs, end_time=undefined}) ->
     {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartTs),
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_FROM_START,
                           [MetricName, StartTsBin],
-                          [consistency()]);
+                          [read_consistency()]);
 do_search_rows(Client, #search{metric_name=MetricName,
                             start_time=StartTs, end_time=EndTs}) ->
     {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartTs),
@@ -155,7 +157,7 @@ do_search_rows(Client, #search{metric_name=MetricName,
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_IN_RANGE,
                           [MetricName, StartTsBin, EndTsBin],
-                          [consistency()]).
+                          [read_consistency()]).
 
 %% @doc Return tuples with original and decoded rowkey
 decode_rowkeys(RowKeys) ->
@@ -213,19 +215,33 @@ do_search_data_points(Pool, S, [{RowKey, RowProps}|Rows], Acc) ->
             Error
     end.
 
+query_data_points(Client, S, RowKey, RowProps) ->
+    query_data_points(Client, S, RowKey, RowProps, []).
+
 query_data_points(Client, #search{start_time=StartTime,
-                                  end_time=undefined}, RowKey, RowProps) ->
+                                  end_time=undefined}=S, RowKey, RowProps, Acc) ->
+    ReadRowSize = ?MODULE:read_row_size(),
     RowTime = proplists:get_value(row_time, RowProps),
     MaxTime = lists:max([RowTime, StartTime]),
     {ok, StartOffsetBin} = freya_blobs:encode_timestamp(MaxTime),
-    case erlcql_client:execute(Client,
-                               ?SELECT_DATA_FROM_START,
-                               [RowKey, StartOffsetBin, ?MODULE:read_row_size()],
-                               [consistency()]) of
-        {ok, {[], _}} -> {ok, []};
+    QueryResult = erlcql_client:execute(
+                    Client, ?SELECT_DATA_FROM_START,
+                    [RowKey, StartOffsetBin, ReadRowSize],
+                    [read_consistency()]),
+    case QueryResult of
+        {ok, {[], _}} -> {ok, lists:flatten(lists:reverse(Acc))};
         {ok, {BinDataPoints, _}} ->
             DataPoints = lists:map(to_data_point(RowProps), BinDataPoints),
-            {ok, DataPoints};
+            case length(DataPoints) == ReadRowSize of
+                true ->
+                    LastDP = lists:last(DataPoints),
+                    NewStartTime = LastDP#data_point.ts+1,
+                    query_data_points(Client,
+                                      S#search{start_time=NewStartTime},
+                                      RowKey, RowProps, [DataPoints|Acc]);
+                false ->
+                    {ok, lists:flatten(lists:reverse([DataPoints|Acc]))}
+            end;
         {error, _} = Error ->
             Error
     end.
