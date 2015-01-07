@@ -28,8 +28,7 @@
                  socket        :: port(),
                  opts          :: term() }).
 
--define(TCP_OPTS, [binary,{active, false},
-                   {packet, line},{keepalive, true}]).
+-define(TCP_OPTS, [binary,{active, false}, {keepalive, true}, {packet, 0}]).
 
 -define(RECONNECT_TIME_MSECS , 1000).
 -define(TCP_RECV_LEN         , 0).
@@ -96,7 +95,7 @@ connected(Msg, S1) ->
 connected(version, _From, S1) ->
     Reply = freya_version(S1),
     {reply, Reply, connected, S1};
-connected({put_metric = Cmd, {M, TS, V, Tags}}, _From, S1) ->
+connected({put_metric, {M, TS, V, Tags}}, _From, S1) ->
     Raw = freya_tcp_codec:encode({command, M, TS, V, Tags}),
     case send(Raw, S1) of
         ok ->
@@ -149,21 +148,20 @@ close_connection(#state{socket=undefined}=State) ->
     State;
 close_connection(#state{socket=Sock}=State) ->
     ok = gen_tcp:close(Sock),
-    kai_pool:leave(),
     State#state{socket=undefined}.
 
 freya_version(S1) ->
-    Raw = freya_tcp_codec:version(),
+    Raw = freya_tcp_codec:encode(version),
     case send(Raw, S1) of
         ok ->
             case freya_wait_reply(S1) of
                 Data when is_binary(Data) ->
-                    {ok, {freya, Data}};
+                    {ok, freya_tcp_codec:decode(Data)};
                 {error, _}=E ->
                     E
             end;
-        {error, R} ->
-            {error, {freya, R}}
+        {error, _R}=E ->
+            E
     end.
 
 freya_wait_reply(#state{socket = Socket}) ->
