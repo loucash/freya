@@ -28,7 +28,7 @@ console:
 	$(ERL) -sname $(PROJECT) $(EPATH)
 
 deps:
-	@./rebar get-deps update-deps
+	@./rebar get-deps
 
 doc:
 	@./rebar skip_deps=true doc
