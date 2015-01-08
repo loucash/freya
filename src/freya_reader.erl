@@ -63,7 +63,8 @@ search(Pool, MetricName, StartTime, Options) when is_atom(Pool),
                                                   is_binary(MetricName),
                                                   is_integer(StartTime),
                                                   is_list(Options) ->
-    case verify_options(Options, #search{metric_name=MetricName, start_time=StartTime}) of
+    case verify_options(Options, #search{metric_name=MetricName,
+                                         start_time=StartTime}) of
         {ok, Search} ->
             do_search(Pool, Search);
         {error, _} = Error ->
@@ -147,15 +148,18 @@ search_rows(Pool, Search) ->
 %% @doc Return query execute result
 do_search_rows(Client, #search{metric_name=MetricName,
                                start_time=StartTs, end_time=undefined}) ->
-    {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartTs),
+    StartRowTime = freya_utils:floor(StartTs, ?ROW_WIDTH),
+    {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartRowTime),
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_FROM_START,
                           [MetricName, StartTsBin],
                           [read_consistency()]);
 do_search_rows(Client, #search{metric_name=MetricName,
-                            start_time=StartTs, end_time=EndTs}) ->
-    {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartTs),
-    {ok, EndTsBin}   = freya_blobs:encode_search_key(MetricName, EndTs),
+                               start_time=StartTs, end_time=EndTs}) ->
+    StartRowTime = freya_utils:floor(StartTs, ?ROW_WIDTH),
+    EndRowTime   = freya_utils:floor(EndTs, ?ROW_WIDTH) + 1,
+    {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartRowTime),
+    {ok, EndTsBin}   = freya_blobs:encode_search_key(MetricName, EndRowTime),
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_IN_RANGE,
                           [MetricName, StartTsBin, EndTsBin],
@@ -197,6 +201,7 @@ matching_tags(RowTags) ->
         lists:any(MatchFun, RowTags)
     end.
 
+%% @doc Return result of querying each rowkey, done in parallel using pmap
 search_data_points(Pool, #search{}=S, Rows) ->
     Results0 = rpc:pmap({?MODULE, do_search_data_points},
                         [Pool, S], Rows),
@@ -209,27 +214,24 @@ search_data_points(Pool, #search{}=S, Rows) ->
         _ -> {ok, lists:flatten(lists:reverse(Results1))}
     end.
 
-do_search_data_points({RowKey, RowProps}, Pool, S) ->
-    {ok, RowProps} = freya_blobs:decode_rowkey(RowKey),
+do_search_data_points(Row, Pool, S) ->
     {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(Pool),
     Client = erlcql_cluster_worker:get_client(Worker),
-    Result = query_data_points(Client, S, RowKey, RowProps),
+    Result = query_data_points(Row, Client, S),
     erlcql_cluster:checkin(Resource),
     Result.
 
-query_data_points(Client, S, RowKey, RowProps) ->
-    query_data_points(Client, S, RowKey, RowProps, []).
+query_data_points(Row, Client, S) ->
+    query_data_points(Row, Client, S, []).
 
-query_data_points(Client, #search{start_time=StartTime,
-                                  end_time=undefined}=S, RowKey, RowProps, Acc) ->
-    ReadRowSize = ?MODULE:read_row_size(),
-    RowTime = proplists:get_value(row_time, RowProps),
-    MaxTime = lists:max([RowTime, StartTime]),
-    {ok, StartOffsetBin} = freya_blobs:encode_timestamp(MaxTime),
-    QueryResult = erlcql_client:execute(
-                    Client, ?SELECT_DATA_FROM_START,
-                    [RowKey, StartOffsetBin, ReadRowSize],
-                    [read_consistency()]),
+query_data_points({RowKey, RowProps}=Row, Client,
+                  #search{start_time=StartTime, end_time=undefined}=S, Acc) ->
+    ReadRowSize     = ?MODULE:read_row_size(),
+    StartOffsetBin  = start_time_bin(StartTime, RowProps),
+    QueryResult     = erlcql_client:execute(
+                        Client, ?SELECT_DATA_FROM_START,
+                        [RowKey, StartOffsetBin, ReadRowSize],
+                        [read_consistency()]),
     case QueryResult of
         {ok, {[], _}} -> {ok, lists:flatten(lists:reverse(Acc))};
         {ok, {BinDataPoints, _}} ->
@@ -238,9 +240,35 @@ query_data_points(Client, #search{start_time=StartTime,
                 true ->
                     LastDP = lists:last(DataPoints),
                     NewStartTime = LastDP#data_point.ts+1,
-                    query_data_points(Client,
+                    query_data_points(Row, Client,
                                       S#search{start_time=NewStartTime},
-                                      RowKey, RowProps, [DataPoints|Acc]);
+                                      [DataPoints|Acc]);
+                false ->
+                    {ok, lists:flatten(lists:reverse([DataPoints|Acc]))}
+            end;
+        {error, _} = Error ->
+            Error
+    end;
+query_data_points({RowKey, RowProps}=Row, Client,
+                  #search{start_time=StartTime, end_time=EndTime}=S, Acc) ->
+    ReadRowSize     = ?MODULE:read_row_size(),
+    StartOffsetBin  = start_time_bin(StartTime, RowProps),
+    EndOffsetBin    = end_time_bin(EndTime, RowProps),
+    QueryResult     = erlcql_client:execute(
+                        Client, ?SELECT_DATA_IN_RANGE,
+                        [RowKey, StartOffsetBin, EndOffsetBin, ReadRowSize],
+                        [read_consistency()]),
+    case QueryResult of
+        {ok, {[], _}} -> {ok, lists:flatten(lists:reverse(Acc))};
+        {ok, {BinDataPoints, _}} ->
+            DataPoints = lists:map(to_data_point(RowProps), BinDataPoints),
+            case length(DataPoints) == ReadRowSize of
+                true ->
+                    LastDP = lists:last(DataPoints),
+                    NewStartTime = LastDP#data_point.ts+1,
+                    query_data_points(Row, Client,
+                                      S#search{start_time=NewStartTime},
+                                      [DataPoints|Acc]);
                 false ->
                     {ok, lists:flatten(lists:reverse([DataPoints|Acc]))}
             end;
@@ -248,10 +276,31 @@ query_data_points(Client, #search{start_time=StartTime,
             Error
     end.
 
+%% @doc Return binary format of start time offset
+start_time_bin(StartTime, RowProps) ->
+    RowTime = proplists:get_value(row_time, RowProps),
+    MaxTime = lists:max([RowTime, StartTime]),
+    {ok, Bin} = freya_blobs:encode_timestamp(MaxTime),
+    Bin.
+
+%% @doc Return binary format of end time offset
+end_time_bin(EndTime, RowProps) ->
+    RowTime = proplists:get_value(row_time, RowProps),
+    RowWidthMs = freya_utils:ms(?ROW_WIDTH),
+    {ok, Bin} = case EndTime > (RowTime + RowWidthMs) of
+                    true ->
+                        freya_blobs:encode_offset(RowWidthMs+1);
+                    false ->
+                        freya_blobs:encode_timestamp(EndTime)
+                end,
+    Bin.
+
+%% @doc Read configuration parameter: read_row_size
 read_row_size() ->
     {ok, ReadRowSize} = freya:get_env(read_row_size),
     ReadRowSize.
 
+%% @doc Return a function that can create #data_point
 to_data_point(RowProps0) ->
     RowTime  = proplists:get_value(row_time, RowProps0),
     DataType = proplists:get_value(type, RowProps0),
