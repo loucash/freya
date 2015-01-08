@@ -8,16 +8,20 @@
 -include("freya.hrl").
 
 -export([statements/0]).
--export([search/3, search/4, search/5]).
+-export([search/2]).
 
 -export([do_search_data_points/3]).
 
 % exported for tests
 -export([read_row_size/0]).
 
--type option()  :: {aggregate, aggregate()} |
+-type option()  :: {metric_name, binary()} |
+                   {start_time, milliseconds()} |
+                   {end_time, milliseconds()} |
+                   {aligned,   boolean()} |
+                   {aggregate, aggregate()} |
                    {precision, precision()} |
-                   {aligned,   boolean()}.
+                   {tags, proplists:proplist()}.
 -type options() :: [option()].
 
 -record(search, {
@@ -51,41 +55,9 @@ statements() ->
         "rowkey = ? AND offset >= ? AND offset <= ? LIMIT ?;">>}
     ].
 
--spec search(pool_name(), metric_name(), milliseconds()) -> {ok, list()}.
-search(Pool, MetricName, StartTime) when is_atom(Pool),
-                                         is_binary(MetricName),
-                                         is_integer(StartTime) ->
-    search(Pool, MetricName, StartTime, []).
-
--spec search(pool_name(), metric_name(), milliseconds(),
-             milliseconds() | options()) -> {ok, list()}.
-search(Pool, MetricName, StartTime, Options) when is_atom(Pool),
-                                                  is_binary(MetricName),
-                                                  is_integer(StartTime),
-                                                  is_list(Options) ->
-    case verify_options(Options, #search{metric_name=MetricName,
-                                         start_time=StartTime}) of
-        {ok, Search} ->
-            do_search(Pool, Search);
-        {error, _} = Error ->
-            Error
-    end;
-
-search(Pool, MetricName, StartTime, EndTime) when is_atom(Pool),
-                                                  is_binary(MetricName),
-                                                  is_integer(StartTime),
-                                                  is_integer(EndTime) ->
-    search(Pool, MetricName, StartTime, EndTime, []).
-
--spec search(pool_name(), metric_name(), milliseconds(), milliseconds(), options()) -> {ok, list()}.
-search(Pool, MetricName, StartTime, EndTime, Options) when is_atom(Pool),
-                                                           is_binary(MetricName),
-                                                           is_integer(StartTime),
-                                                           is_integer(EndTime),
-                                                           is_list(Options) ->
-    case verify_options(Options, #search{metric_name=MetricName,
-                                         start_time=StartTime,
-                                         end_time=EndTime}) of
+-spec search(pool_name(), options()) -> {ok, list()} | {error, any()}.
+search(Pool, Options) when is_list(Options) ->
+    case verify_options(Options, #search{}) of
         {ok, Search} ->
             do_search(Pool, Search);
         {error, _} = Error ->
@@ -98,8 +70,14 @@ search(Pool, MetricName, StartTime, EndTime, Options) when is_atom(Pool),
 -spec verify_options(options(), search()) -> {ok, search()} | {error, any()}.
 verify_options([], Search) ->
     {ok, Search};
-verify_options([{aligned, Value}|Options], Search) when is_boolean(Value) ->
-    verify_options(Options, Search#search{aligned=Value});
+verify_options([{metric_name, MetricName}|Options], Search) when is_binary(MetricName) ->
+    verify_options(Options, Search#search{metric_name=MetricName});
+verify_options([{start_time, Start}|Options], Search) when is_integer(Start) ->
+    verify_options(Options, Search#search{start_time=Start});
+verify_options([{end_time, End}|Options], Search) when is_integer(End) ->
+    verify_options(Options, Search#search{end_time=End});
+verify_options([{aligned, Bool}|Options], Search) when is_boolean(Bool) ->
+    verify_options(Options, Search#search{aligned=Bool});
 verify_options([{aggregate, Value}|Options], Search) ->
     case lists:member(Value, ?AGGREGATES) of
         true ->
@@ -114,9 +92,9 @@ verify_options([{precision, {Val, Type}}|Options], Search) when is_integer(Val) 
         false ->
             {error, bad_precision}
     end;
-verify_options([{tags, Tags}|Options], Search) when is_list(Tags) ->
-    verify_options(Options, Search#search{tags=Tags});
-verify_options([Opt|_], _) ->
+verify_options([{tags, List}|Options], Search) when is_list(List) ->
+    verify_options(Options, Search#search{tags=List});
+verify_options([Opt|_], _Search) ->
     {error, {bad_option, Opt}}.
 
 read_consistency() ->
@@ -124,6 +102,13 @@ read_consistency() ->
     {consistency, A}.
 
 %% @doc Performs all steps of reading data from cassandra
+do_search(_Pool, #search{metric_name=undefined}) ->
+    {error, {missing_param, metric_name}};
+do_search(_Pool, #search{start_time=undefined}) ->
+    {error, {missing_param, start_time}};
+do_search(_Pool, #search{start_time=ST, end_time=ET}) when ET =/= undefined andalso
+                                                           ST > ET ->
+    {error, invalid_time_range};
 do_search(Pool, #search{}=S) ->
     Fns = [
         fun(_)    -> search_rows(Pool, S) end,

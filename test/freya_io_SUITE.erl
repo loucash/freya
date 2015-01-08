@@ -45,7 +45,8 @@ t_write_read_data_point(_Config) ->
     DPIn = freya_data_point:new(MetricName, Ts, <<"kairos_long">>, 1),
     ok = freya_writer:save(Publisher, DPIn),
     timer:sleep(2000),
-    {ok, [DPIn]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts),
+    {ok, [DPIn]} = freya_reader:search(?CS_READ_POOL, [{metric_name, MetricName},
+                                                       {start_time, Ts}]),
     ok.
 
 t_write_read_different_rows(_Config) ->
@@ -58,7 +59,9 @@ t_write_read_different_rows(_Config) ->
     ok = freya_writer:save(Publisher, DPIn1),
     ok = freya_writer:save(Publisher, DPIn2),
     timer:sleep(2000),
-    {ok, [DPIn1, DPIn2]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts1),
+    {ok, [DPIn1, DPIn2]} = freya_reader:search(?CS_READ_POOL,
+                                               [{metric_name, MetricName},
+                                                {start_time, Ts1}]),
     ok.
 
 t_read_row_size(_Config) ->
@@ -76,7 +79,9 @@ t_read_row_size(_Config) ->
     ok = freya_writer:save(Publisher, DPIn3),
     ok = freya_writer:save(Publisher, DPIn4),
     timer:sleep(2500),
-    {ok, [DPIn1, DPIn2, DPIn3, DPIn4]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts),
+    {ok, [DPIn1, DPIn2, DPIn3, DPIn4]} = freya_reader:search(?CS_READ_POOL,
+                                                             [{metric_name, MetricName},
+                                                              {start_time, Ts}]),
     meck:unload(),
     ok.
 
@@ -93,7 +98,10 @@ t_start_end_time(_Config) ->
     ok = freya_writer:save(Publisher, DPIn3),
     ok = freya_writer:save(Publisher, DPIn4),
     timer:sleep(2500),
-    {ok, [DPIn1, DPIn2]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts, Ts+1),
+    {ok, [DPIn1, DPIn2]} = freya_reader:search(?CS_READ_POOL,
+                                               [{metric_name, MetricName},
+                                                {start_time, Ts},
+                                                {end_time, Ts+1}]),
     ok.
 
 t_start_end_time_different_rowkeys(_Config) ->
@@ -106,7 +114,10 @@ t_start_end_time_different_rowkeys(_Config) ->
     ok = freya_writer:save(Publisher, DPIn1),
     ok = freya_writer:save(Publisher, DPIn2),
     timer:sleep(2500),
-    {ok, [DPIn1, DPIn2]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts1, Ts2),
+    {ok, [DPIn1, DPIn2]} = freya_reader:search(?CS_READ_POOL,
+                                               [{metric_name, MetricName},
+                                                {start_time, Ts1},
+                                                {end_time, Ts2}]),
     ok.
 
 t_filter_tags_1(_Config) ->
@@ -120,8 +131,10 @@ t_filter_tags_1(_Config) ->
     ok = freya_writer:save(Publisher, DPIn1),
     ok = freya_writer:save(Publisher, DPIn2),
     timer:sleep(2000),
-    {ok, [DPIn1]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts,
-                                        [{tags, [{<<"foo">>, <<"bar">>}]}]),
+    {ok, [DPIn1]} = freya_reader:search(?CS_READ_POOL,
+                                        [{metric_name, MetricName},
+                                         {start_time, Ts},
+                                         {tags, [{<<"foo">>, <<"bar">>}]}]),
     ok.
 
 t_filter_tags_2(_Config) ->
@@ -133,8 +146,10 @@ t_filter_tags_2(_Config) ->
                                  {<<"baz">>, <<"fox">>}]),
     ok = freya_writer:save(Publisher, DPIn),
     timer:sleep(2000),
-    {ok, [DPIn]} = freya_reader:search(?CS_READ_POOL, MetricName, Ts,
-                                       [{tags, [{<<"foo">>, <<"bar">>}]}]),
+    {ok, [DPIn]} = freya_reader:search(?CS_READ_POOL,
+                                       [{metric_name, MetricName},
+                                         {start_time, Ts},
+                                         {tags, [{<<"foo">>, <<"bar">>}]}]),
     ok.
 
 t_tcp_version(_Config) ->
