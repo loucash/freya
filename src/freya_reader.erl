@@ -21,7 +21,8 @@
                    {aligned,   boolean()} |
                    {aggregate, aggregate()} |
                    {precision, precision()} |
-                   {tags, proplists:proplist()}.
+                   {tags, proplists:proplist()} |
+                   {order, data_order()}.
 -type options() :: [option()].
 
 -record(search, {
@@ -31,28 +32,40 @@
           aligned = false   :: boolean(),
           aggregate         :: aggregate(),
           precision         :: precision(),
-          tags              :: proplists:proplist()
+          tags              :: proplists:proplist(),
+          order = asc       :: data_order()
          }).
 -type search()  :: #search{}.
-
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 statements() ->
     [
-     {?SELECT_ROWS_FROM_START,
+     {?SELECT_ROWS_FROM_START_ASC,
       <<"SELECT rowkey FROM row_key_index WHERE "
-        "metric_name = ? AND rowkey >= ?;">>},
-     {?SELECT_ROWS_IN_RANGE,
+        "metric_name = ? AND rowkey >= ? ORDER BY rowkey ASC;">>},
+     {?SELECT_ROWS_FROM_START_DESC,
       <<"SELECT rowkey FROM row_key_index WHERE "
-        "metric_name = ? AND rowkey >= ? AND rowkey <= ?;">>},
-     {?SELECT_DATA_FROM_START,
+        "metric_name = ? AND rowkey >= ? ORDER BY rowkey DESC;">>},
+     {?SELECT_ROWS_IN_RANGE_ASC,
+      <<"SELECT rowkey FROM row_key_index WHERE "
+        "metric_name = ? AND rowkey >= ? AND rowkey <= ? ORDER BY rowkey ASC;">>},
+     {?SELECT_ROWS_IN_RANGE_DESC,
+      <<"SELECT rowkey FROM row_key_index WHERE "
+        "metric_name = ? AND rowkey >= ? AND rowkey <= ? ORDER BY rowkey DESC;">>},
+     {?SELECT_DATA_FROM_START_ASC,
       <<"SELECT offset, value FROM data_points WHERE "
-        "rowkey = ? AND offset >= ? LIMIT ?;">>},
-     {?SELECT_DATA_IN_RANGE,
+        "rowkey = ? AND offset >= ? ORDER BY offset ASC  LIMIT ?;">>},
+     {?SELECT_DATA_FROM_START_DESC,
       <<"SELECT offset, value FROM data_points WHERE "
-        "rowkey = ? AND offset >= ? AND offset <= ? LIMIT ?;">>}
+        "rowkey = ? AND offset >= ? ORDER BY offset DESC LIMIT ?;">>},
+     {?SELECT_DATA_IN_RANGE_ASC,
+      <<"SELECT offset, value FROM data_points WHERE "
+        "rowkey = ? AND offset >= ? AND offset <= ? LIMIT ?;">>},
+     {?SELECT_DATA_IN_RANGE_DESC,
+      <<"SELECT offset, value FROM data_points WHERE "
+        "rowkey = ? AND offset >= ? AND offset <= ? ORDER BY offset DESC LIMIT ?;">>}
     ].
 
 -spec search(pool_name(), options()) -> {ok, list()} | {error, any()}.
@@ -94,6 +107,8 @@ verify_options([{precision, {Val, Type}}|Options], Search) when is_integer(Val) 
     end;
 verify_options([{tags, List}|Options], Search) when is_list(List) ->
     verify_options(Options, Search#search{tags=List});
+verify_options([{order, Order}|Options], Search) when Order =:= asc orelse Order =:= desc ->
+    verify_options(Options, Search#search{order=Order});
 verify_options([Opt|_], _Search) ->
     {error, {bad_option, Opt}}.
 
@@ -131,22 +146,22 @@ search_rows(Pool, Search) ->
     end.
 
 %% @doc Return query execute result
-do_search_rows(Client, #search{metric_name=MetricName,
+do_search_rows(Client, #search{metric_name=MetricName, order=Order,
                                start_time=StartTs, end_time=undefined}) ->
     StartRowTime = freya_utils:floor(StartTs, ?ROW_WIDTH),
     {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartRowTime),
     erlcql_client:execute(Client,
-                          ?SELECT_ROWS_FROM_START,
+                          ?SELECT_ROWS_FROM_START(Order),
                           [MetricName, StartTsBin],
                           [read_consistency()]);
-do_search_rows(Client, #search{metric_name=MetricName,
+do_search_rows(Client, #search{metric_name=MetricName, order=Order,
                                start_time=StartTs, end_time=EndTs}) ->
     StartRowTime = freya_utils:floor(StartTs, ?ROW_WIDTH),
     EndRowTime   = freya_utils:floor(EndTs, ?ROW_WIDTH) + 1,
     {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartRowTime),
     {ok, EndTsBin}   = freya_blobs:encode_search_key(MetricName, EndRowTime),
     erlcql_client:execute(Client,
-                          ?SELECT_ROWS_IN_RANGE,
+                          ?SELECT_ROWS_IN_RANGE(Order),
                           [MetricName, StartTsBin, EndTsBin],
                           [read_consistency()]).
 
@@ -210,11 +225,12 @@ query_data_points(Row, Client, S) ->
     query_data_points(Row, Client, S, []).
 
 query_data_points({RowKey, RowProps}=Row, Client,
-                  #search{start_time=StartTime, end_time=undefined}=S, Acc) ->
+                  #search{start_time=StartTime, end_time=undefined,
+                          order=Order}=S, Acc) ->
     ReadRowSize     = ?MODULE:read_row_size(),
     StartOffsetBin  = start_time_bin(StartTime, RowProps),
     QueryResult     = erlcql_client:execute(
-                        Client, ?SELECT_DATA_FROM_START,
+                        Client, ?SELECT_DATA_FROM_START(Order),
                         [RowKey, StartOffsetBin, ReadRowSize],
                         [read_consistency()]),
     case QueryResult of
@@ -223,11 +239,7 @@ query_data_points({RowKey, RowProps}=Row, Client,
             DataPoints = lists:map(to_data_point(RowProps), BinDataPoints),
             case length(DataPoints) == ReadRowSize of
                 true ->
-                    LastDP = lists:last(DataPoints),
-                    NewStartTime = LastDP#data_point.ts+1,
-                    query_data_points(Row, Client,
-                                      S#search{start_time=NewStartTime},
-                                      [DataPoints|Acc]);
+                    continue_query_data_points(DataPoints, Row, Client, S, Acc);
                 false ->
                     {ok, lists:flatten(lists:reverse([DataPoints|Acc]))}
             end;
@@ -235,12 +247,13 @@ query_data_points({RowKey, RowProps}=Row, Client,
             Error
     end;
 query_data_points({RowKey, RowProps}=Row, Client,
-                  #search{start_time=StartTime, end_time=EndTime}=S, Acc) ->
+                  #search{start_time=StartTime, end_time=EndTime,
+                          order=Order}=S, Acc) ->
     ReadRowSize     = ?MODULE:read_row_size(),
     StartOffsetBin  = start_time_bin(StartTime, RowProps),
     EndOffsetBin    = end_time_bin(EndTime, RowProps),
     QueryResult     = erlcql_client:execute(
-                        Client, ?SELECT_DATA_IN_RANGE,
+                        Client, ?SELECT_DATA_IN_RANGE(Order),
                         [RowKey, StartOffsetBin, EndOffsetBin, ReadRowSize],
                         [read_consistency()]),
     case QueryResult of
@@ -249,17 +262,26 @@ query_data_points({RowKey, RowProps}=Row, Client,
             DataPoints = lists:map(to_data_point(RowProps), BinDataPoints),
             case length(DataPoints) == ReadRowSize of
                 true ->
-                    LastDP = lists:last(DataPoints),
-                    NewStartTime = LastDP#data_point.ts+1,
-                    query_data_points(Row, Client,
-                                      S#search{start_time=NewStartTime},
-                                      [DataPoints|Acc]);
+                    continue_query_data_points(DataPoints, Row, Client, S, Acc);
                 false ->
                     {ok, lists:flatten(lists:reverse([DataPoints|Acc]))}
             end;
         {error, _} = Error ->
             Error
     end.
+
+continue_query_data_points(DataPoints, Row, Client, #search{order=asc}=S, Acc) ->
+    LastDP = lists:last(DataPoints),
+    NewStartTime = LastDP#data_point.ts+1,
+    query_data_points(Row, Client,
+                      S#search{start_time=NewStartTime},
+                      [DataPoints|Acc]);
+continue_query_data_points(DataPoints, Row, Client, #search{order=desc}=S, Acc) ->
+    LastDP = lists:last(DataPoints),
+    NewEndTime = LastDP#data_point.ts-1,
+    query_data_points(Row, Client,
+                      S#search{end_time=NewEndTime},
+                      [DataPoints|Acc]).
 
 %% @doc Return binary format of start time offset
 start_time_bin(StartTime, RowProps) ->
