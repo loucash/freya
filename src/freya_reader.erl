@@ -10,17 +10,17 @@
 -export([statements/0]).
 -export([search/2]).
 
--export([do_search_data_points/3]).
-
 % exported for tests
 -export([read_row_size/0]).
+
+% exported for pmap
+-export([do_search_data_points/3]).
 
 -type option()  :: {metric_name, binary()} |
                    {start_time, milliseconds()} |
                    {end_time, milliseconds()} |
-                   {aligned,   boolean()} |
-                   {aggregate, aggregate()} |
-                   {precision, precision()} |
+                   {align, boolean()} |
+                   {aggregate, {aggregate(), precision()}} |
                    {tags, proplists:proplist()} |
                    {order, data_order()}.
 -type options() :: [option()].
@@ -29,9 +29,8 @@
           metric_name       :: binary(),
           start_time        :: milliseconds(),
           end_time          :: milliseconds() | undefined,
-          aligned = false   :: boolean(),
-          aggregate         :: aggregate(),
-          precision         :: precision(),
+          align = false     :: boolean(),
+          aggregator        :: {aggregate(), precision()},
           tags              :: proplists:proplist(),
           order = asc       :: data_order()
          }).
@@ -89,21 +88,19 @@ verify_options([{start_time, Start}|Options], Search) when is_integer(Start) ->
     verify_options(Options, Search#search{start_time=Start});
 verify_options([{end_time, End}|Options], Search) when is_integer(End) ->
     verify_options(Options, Search#search{end_time=End});
-verify_options([{aligned, Bool}|Options], Search) when is_boolean(Bool) ->
-    verify_options(Options, Search#search{aligned=Bool});
-verify_options([{aggregate, Value}|Options], Search) ->
-    case lists:member(Value, ?AGGREGATES) of
+verify_options([{align, Bool}|Options], Search) when is_boolean(Bool) ->
+    verify_options(Options, Search#search{align=Bool});
+verify_options([{aggregate, {Fun, {Val, Type}}}|Options], Search) ->
+    case lists:member(Fun, ?AGGREGATES) of
         true ->
-            verify_options(Options, Search#search{aggregate=Value});
+            case lists:member(Type, ?UNITS) of
+                true ->
+                    verify_options(Options, Search#search{aggregator={Fun, {Val, Type}}});
+                false ->
+                    {error, bad_precision}
+            end;
         false ->
             {error, bad_aggregate}
-    end;
-verify_options([{precision, {Val, Type}}|Options], Search) when is_integer(Val) ->
-    case lists:member(Type, ?UNITS) of
-        true ->
-            verify_options(Options, Search#search{precision={Val, Type}});
-        false ->
-            {error, bad_precision}
     end;
 verify_options([{tags, List}|Options], Search) when is_list(List) ->
     verify_options(Options, Search#search{tags=List});
@@ -129,7 +126,8 @@ do_search(Pool, #search{}=S) ->
         fun(_)    -> search_rows(Pool, S) end,
         fun(Rows) -> decode_rowkeys(Rows) end,
         fun(Rows) -> filter_row_tags(S, Rows) end,
-        fun(Rows) -> search_data_points(Pool, S, Rows) end
+        fun(Rows) -> search_data_points(Pool, S, Rows) end,
+        fun(Rows) -> maybe_aggregate_data(S, Rows) end
     ],
     hope_result:pipe(Fns, undefined).
 
@@ -317,3 +315,88 @@ to_data_point(RowProps0) ->
         RowProps = [{ts, Ts},{value, Value}|RowProps0],
         freya_data_point:of_props(RowProps)
     end.
+
+-record(aggr, {
+          epoch         :: any(),
+          epoch_fun     :: fun(),
+          epoch_data    :: dict(),
+          timeline = [] :: [data_point()]
+         }).
+
+maybe_aggregate_data(#search{aggregator=undefined}, Rows) ->
+    {ok, Rows};
+maybe_aggregate_data(#search{}, []) ->
+    {ok, []};
+maybe_aggregate_data(#search{}=S, Rows) ->
+    Aggr = #aggr{epoch_fun=epoch_fun(S)},
+    Result0 = lists:foldl(fold_data_points_fun(S), Aggr, Rows),
+    #aggr{timeline=DataPoints} = emit(Result0),
+    {ok, lists:reverse(DataPoints)}.
+
+epoch_fun(#search{aggregator=undefined}) ->
+    fun(Ts) -> Ts end;
+epoch_fun(#search{start_time=StartTime, aggregator={_,Precision}}) ->
+    Range = freya_utils:ms(Precision),
+    fun(Ts) ->
+            ((Ts - StartTime) div Range) * Range + StartTime
+    end.
+
+fold_data_points_fun(#search{}=S) ->
+    AggregateFun     = aggregate_fun(S),
+    fun(#data_point{}=DP, #aggr{}=Acc0) ->
+        Acc = maybe_emit(DP, Acc0),
+        AggregateFun(DP, Acc)
+    end.
+
+aggregator_fun(max) ->
+    fun(X, undefined) -> X;
+       (X, Acc) when X > Acc -> X;
+       (_, Acc) -> Acc end;
+aggregator_fun(min) ->
+    fun(X, undefined) -> X;
+       (X, Acc) when X < Acc -> X;
+       (_, Acc) -> Acc end;
+aggregator_fun(sum) ->
+    fun(X, undefined) -> X;
+       (X, Acc) -> X + Acc end;
+aggregator_fun(avg) ->
+    fun(X, undefined) -> X;
+       (X, Acc) -> (X + Acc) / 2 end.
+
+aggregator_start_fun(false) ->
+    fun(#data_point{ts=Ts}, _Acc) -> Ts end;
+aggregator_start_fun(true) ->
+    fun(#data_point{ts=Ts}, #aggr{epoch_fun=EpochFun}) -> EpochFun(Ts) end.
+
+aggregator_key(#data_point{ts=Ts}, #aggr{epoch_fun=EpochFun}) ->
+    EpochFun(Ts).
+
+aggregate_fun(#search{aggregator={Fun, _}, align=Align}) ->
+    AggregatorStartFun  = aggregator_start_fun(Align),
+    AggregatorFun       = aggregator_fun(Fun),
+    fun(#data_point{value=V1}=DP0, #aggr{epoch_data=Data0}=Acc) ->
+        Key = aggregator_key(DP0, Acc),
+        DP = case dict:find(Key, Data0) of
+                 error ->
+                     DP0#data_point{ts=AggregatorStartFun(DP0, Acc),
+                                    value=AggregatorFun(V1, undefined)};
+                 {ok, #data_point{value=V2}=DP1} ->
+                     DP1#data_point{value=AggregatorFun(V1, V2)}
+             end,
+        Acc#aggr{epoch_data=dict:store(Key, DP, Data0)}
+    end.
+
+maybe_emit(#data_point{ts=Ts}, #aggr{epoch=undefined, epoch_fun=EpochFun}=Acc0) ->
+    Acc0#aggr{epoch=EpochFun(Ts), epoch_data=dict:new()};
+maybe_emit(#data_point{ts=Ts}, #aggr{epoch=Epoch, epoch_fun=EpochFun}=Acc0) ->
+    case EpochFun(Ts) > Epoch of
+        true ->
+            Acc = emit(Acc0),
+            Acc#aggr{epoch_data=dict:new(), epoch=EpochFun(Ts)};
+        false ->
+            Acc0
+    end.
+
+emit(#aggr{epoch_data=D, timeline=T}=A) ->
+    Values = [V || {_, V} <- dict:to_list(D)],
+    A#aggr{timeline=Values ++ T}.

@@ -10,8 +10,7 @@
           ts        :: milliseconds(),
           type      :: data_type(),
           tags = [] :: data_tags(),
-          value     :: data_value(),
-          row_time  :: milliseconds()
+          value     :: data_value()
          }).
 -type data_point()  :: #data_point{}.
 
