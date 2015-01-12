@@ -30,7 +30,7 @@
           start_time        :: milliseconds(),
           end_time          :: milliseconds() | undefined,
           align = false     :: boolean(),
-          aggregator        :: {aggregate(), precision()},
+          aggregator        :: undefined | {aggregate(), precision()},
           tags              :: proplists:proplist(),
           order = asc       :: data_order()
          }).
@@ -316,6 +316,7 @@ to_data_point(RowProps0) ->
         freya_data_point:of_props(RowProps)
     end.
 
+%% @doc Helper record to fold over a list of data points
 -record(aggr, {
           epoch         :: any(),
           epoch_fun     :: fun(),
@@ -323,6 +324,7 @@ to_data_point(RowProps0) ->
           timeline = [] :: [data_point()]
          }).
 
+%% @doc Aggregates data for given aggregator
 maybe_aggregate_data(#search{aggregator=undefined}, Rows) ->
     {ok, Rows};
 maybe_aggregate_data(#search{}, []) ->
@@ -333,14 +335,14 @@ maybe_aggregate_data(#search{}=S, Rows) ->
     #aggr{timeline=DataPoints} = emit(Result0),
     {ok, lists:reverse(DataPoints)}.
 
-epoch_fun(#search{aggregator=undefined}) ->
-    fun(Ts) -> Ts end;
+%% @doc Return a function to calculate a base of time interval
 epoch_fun(#search{start_time=StartTime, aggregator={_,Precision}}) ->
     Range = freya_utils:ms(Precision),
     fun(Ts) ->
             ((Ts - StartTime) div Range) * Range + StartTime
     end.
 
+%% @doc Return a function to to fold over list of data points
 fold_data_points_fun(#search{}=S) ->
     AggregateFun     = aggregate_fun(S),
     fun(#data_point{}=DP, #aggr{}=Acc0) ->
@@ -348,29 +350,7 @@ fold_data_points_fun(#search{}=S) ->
         AggregateFun(DP, Acc)
     end.
 
-aggregator_fun(max) ->
-    fun(X, undefined) -> X;
-       (X, Acc) when X > Acc -> X;
-       (_, Acc) -> Acc end;
-aggregator_fun(min) ->
-    fun(X, undefined) -> X;
-       (X, Acc) when X < Acc -> X;
-       (_, Acc) -> Acc end;
-aggregator_fun(sum) ->
-    fun(X, undefined) -> X;
-       (X, Acc) -> X + Acc end;
-aggregator_fun(avg) ->
-    fun(X, undefined) -> X;
-       (X, Acc) -> (X + Acc) / 2 end.
-
-aggregator_start_fun(false) ->
-    fun(#data_point{ts=Ts}, _Acc) -> Ts end;
-aggregator_start_fun(true) ->
-    fun(#data_point{ts=Ts}, #aggr{epoch_fun=EpochFun}) -> EpochFun(Ts) end.
-
-aggregator_key(#data_point{ts=Ts}, #aggr{epoch_fun=EpochFun}) ->
-    EpochFun(Ts).
-
+%% @doc Return a function that aggregate given data point
 aggregate_fun(#search{aggregator={Fun, _}, align=Align}) ->
     AggregatorStartFun  = aggregator_start_fun(Align),
     AggregatorFun       = aggregator_fun(Fun),
@@ -386,6 +366,34 @@ aggregate_fun(#search{aggregator={Fun, _}, align=Align}) ->
         Acc#aggr{epoch_data=dict:store(Key, DP, Data0)}
     end.
 
+%% @doc Return a function that returns a timestamp of interval
+aggregator_start_fun(false) ->
+    fun(#data_point{ts=Ts}, _Acc) -> Ts end;
+aggregator_start_fun(true) ->
+    fun(#data_point{ts=Ts}, #aggr{epoch_fun=EpochFun}) -> EpochFun(Ts) end.
+
+%% @doc Return a function that calculates aggregates
+aggregator_fun(max) ->
+    fun(X, undefined) -> X;
+       (X, Acc) when X > Acc -> X;
+       (_, Acc) -> Acc end;
+aggregator_fun(min) ->
+    fun(X, undefined) -> X;
+       (X, Acc) when X < Acc -> X;
+       (_, Acc) -> Acc end;
+aggregator_fun(sum) ->
+    fun(X, undefined) -> X;
+       (X, Acc) -> X + Acc end;
+aggregator_fun(avg) ->
+    fun(X, undefined) -> X;
+       (X, Acc) -> (X + Acc) / 2 end.
+
+%% @doc Generate a key for grouping values in one interval,
+%% at the moment we support only time grouping
+aggregator_key(#data_point{ts=Ts}, #aggr{epoch_fun=EpochFun}) ->
+    EpochFun(Ts).
+
+%% @doc Check if an interval is finished and if so, emits aggregated data
 maybe_emit(#data_point{ts=Ts}, #aggr{epoch=undefined, epoch_fun=EpochFun}=Acc0) ->
     Acc0#aggr{epoch=EpochFun(Ts), epoch_data=dict:new()};
 maybe_emit(#data_point{ts=Ts}, #aggr{epoch=Epoch, epoch_fun=EpochFun}=Acc0) ->
@@ -397,6 +405,7 @@ maybe_emit(#data_point{ts=Ts}, #aggr{epoch=Epoch, epoch_fun=EpochFun}=Acc0) ->
             Acc0
     end.
 
+%% @doc Emits aggregated data from current interval to timeline
 emit(#aggr{epoch_data=D, timeline=T}=A) ->
     Values = [V || {_, V} <- dict:to_list(D)],
     A#aggr{timeline=Values ++ T}.
