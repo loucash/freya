@@ -18,9 +18,10 @@ start(Publisher) ->
     Opts = [{publisher, Publisher}, {version, Version}],
 
     lager:info("Starting TCP freya interface ~s / ~p", [Version, Publisher]),
-    {ok, _} = ranch:start_listener(freya_tcp_w, 1000, ranch_tcp,
-                                   [{port,
-                                     Port},{active,false},{sndbuf,1024*100},{rcvbuf,1024*100}], ?MODULE, Opts),
+    {ok, _} = ranch:start_listener(freya_tcp_w, 100, ranch_tcp,
+                                   [{port, Port},
+                                    {active,false}],
+                                   ?MODULE, Opts),
     ok.
 
 
