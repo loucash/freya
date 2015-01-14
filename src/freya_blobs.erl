@@ -7,8 +7,8 @@
 
 -include("freya.hrl").
 
--export([encode_rowkey/4, encode_timestamp/1, encode_value/2]).
--export([decode_rowkey/1, decode_timestamp/2, decode_value/2]).
+-export([encode_rowkey/4, encode_timestamp/1, encode_offset/1, encode_value/2]).
+-export([decode_rowkey/1, decode_timestamp/2, decode_offset/1, decode_value/2]).
 -export([encode_search_key/2]).
 
 %%%===================================================================
@@ -43,11 +43,20 @@ decode_rowkey(Bin0) when is_binary(Bin0) ->
 encode_timestamp(Ts) ->
     RowTime = freya_utils:floor(Ts, ?ROW_WIDTH),
     Offset = Ts - RowTime,
+    encode_offset(Offset).
+
+-spec encode_offset(milliseconds()) -> {ok, binary()}.
+encode_offset(Offset) ->
     {ok, <<Offset:31/integer, 0:1>>}.
 
 -spec decode_timestamp(binary(), milliseconds()) -> {ok, milliseconds()}.
-decode_timestamp(<<Offset:31/integer, _:1>>, RowTime) ->
+decode_timestamp(OffsetBin, RowTime) ->
+    {ok, Offset} = decode_offset(OffsetBin),
     {ok, RowTime+Offset}.
+
+-spec decode_offset(binary()) -> {ok, milliseconds()}.
+decode_offset(<<Offset:31/integer, _:1>>) ->
+    {ok, Offset}.
 
 -spec encode_value(binary(), any()) -> {ok, binary()}.
 encode_value(<<"kairos_long">>, Value) ->
@@ -76,8 +85,7 @@ decode_value(<<Real/float, Imag/float>>, <<"kairos_complex">>) ->
 
 -spec encode_search_key(metric_name(), milliseconds()) -> {ok, binary()}.
 encode_search_key(MetricName, Ts) ->
-    RowTime = freya_utils:floor(Ts, ?ROW_WIDTH),
-    Bin = <<MetricName/binary, 0:8/integer, RowTime:64/integer>>,
+    Bin = <<MetricName/binary, 0:8/integer, Ts:64/integer>>,
     {ok, Bin}.
 
 %%%===================================================================

@@ -35,7 +35,7 @@ prop_encode_decode_rowkey() ->
                                         type=DataType, tags=Tags, value=Value},
                {ok, {Row, Ts, Val}} = freya_data_point:encode(DataPoint1),
                {ok, DataPoint2} = freya_data_point:decode(Row, Ts, Val),
-               DataPoint1 =:= DataPoint2#data_point{row_time=undefined}
+               DataPoint1 =:= DataPoint2
            end).
 
 metric_name() ->

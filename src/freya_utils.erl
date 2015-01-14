@@ -1,8 +1,10 @@
 -module(freya_utils).
 
 -include("freya.hrl").
+-define(DEFAULT_PMAP_TIMEOUT, 5000).
 
 -export([floor/2, ceil/2, prev/2, next/2, ms/1]).
+-export([pmap/3, pmap/4]).
 
 -spec floor(milliseconds(), precision()) ->
     milliseconds().
@@ -31,3 +33,29 @@ ms({N, days}) ->
     N * timer:hours(24);
 ms({N, Tp}) ->
     timer:Tp(N).
+
+pmap(F, Args, L) ->
+    pmap(F, Args, L, ?DEFAULT_PMAP_TIMEOUT).
+
+pmap(F, Args, L, Timeout) ->
+    S = self(),
+    Ref = erlang:make_ref(),
+    Pids = lists:map(
+             fun(I) ->
+                spawn_link(fun() -> do_f(S, Ref, F, [I|Args]) end)
+             end, L),
+    gather(Pids, Ref, Timeout).
+
+do_f(Parent, Ref, F, Args) ->
+    Parent ! {self(), Ref, apply(F, Args)}.
+
+gather([Pid|T], Ref, Timeout) ->
+    receive
+        {Pid, Ref, Ret} -> [Ret|gather(T, Ref, Timeout)]
+    after Timeout ->
+        unlink(Pid),
+        exit(Pid, timeout),
+        [{error, timeout}|gather(T, Ref, Timeout)]
+    end;
+gather([], _, _) ->
+    [].

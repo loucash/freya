@@ -3,14 +3,14 @@
 -type data_tags()     :: proplists:proplist().
 -type data_type()     :: binary().
 -type data_value()    :: any().
+-type data_order()    :: asc | desc.
 
 -record(data_point,{
           name      :: metric_name(),
           ts        :: milliseconds(),
           type      :: data_type(),
           tags = [] :: data_tags(),
-          value     :: data_value(),
-          row_time  :: milliseconds()
+          value     :: data_value()
          }).
 -type data_point()  :: #data_point{}.
 
@@ -46,10 +46,26 @@
 -define(INSERT_ROW_INDEX,       insert_row_index_q).
 -define(INSERT_STRING_INDEX,    insert_string_index_q).
 
--define(SELECT_ROWS_FROM_START, select_start_row_index_q).
--define(SELECT_ROWS_IN_RANGE,   select_range_row_index_q).
--define(SELECT_DATA_FROM_START, select_start_data_point_q).
--define(SELECT_DATA_IN_RANGE,   select_range_data_point_q).
+-define(SELECT_ROWS_FROM_START_ASC,     select_start_row_index_asc_q).
+-define(SELECT_ROWS_FROM_START_DESC,    select_start_row_index_desc_q).
+-define(SELECT_ROWS_FROM_START(Order),
+        (fun(asc)  -> ?SELECT_ROWS_FROM_START_ASC;
+            (desc) -> ?SELECT_ROWS_FROM_START_DESC end)(Order)).
+-define(SELECT_ROWS_IN_RANGE_ASC,       select_range_row_index_asc_q).
+-define(SELECT_ROWS_IN_RANGE_DESC,      select_range_row_index_desc_q).
+-define(SELECT_ROWS_IN_RANGE(Order),
+        (fun(asc)  -> ?SELECT_ROWS_IN_RANGE_ASC;
+            (desc) -> ?SELECT_ROWS_IN_RANGE_DESC end)(Order)).
+-define(SELECT_DATA_FROM_START_ASC,     select_start_data_point_asc_q).
+-define(SELECT_DATA_FROM_START_DESC,    select_start_data_point_desc_q).
+-define(SELECT_DATA_FROM_START(Order),
+        (fun(asc)  -> ?SELECT_DATA_FROM_START_ASC;
+            (desc) -> ?SELECT_DATA_FROM_START_DESC end)(Order)).
+-define(SELECT_DATA_IN_RANGE_ASC,       select_range_data_point_asc_q).
+-define(SELECT_DATA_IN_RANGE_DESC,      select_range_data_point_desc_q).
+-define(SELECT_DATA_IN_RANGE(Order),
+        (fun(asc)  -> ?SELECT_DATA_IN_RANGE_ASC;
+            (desc) -> ?SELECT_DATA_IN_RANGE_DESC end)(Order)).
 
 % string index keys
 -define(ROW_KEY_METRIC_NAMES,   <<"metric_names">>).
