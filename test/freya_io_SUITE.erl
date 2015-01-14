@@ -9,6 +9,7 @@
          t_filter_tags_2/1,
          t_sum_aggregate/1,
          t_sum_aggregate_aligned/1,
+         t_sum_aggregate_aligned_different_types/1,
          t_avg_aggregate/1,
          t_avg_aggregate_aligned/1,
          t_start_end_time/1,
@@ -35,6 +36,7 @@ all() ->
      t_filter_tags_2,
      t_sum_aggregate,
      t_sum_aggregate_aligned,
+     t_sum_aggregate_aligned_different_types,
      t_avg_aggregate,
      t_avg_aggregate_aligned,
      t_tcp_version
@@ -231,6 +233,41 @@ t_sum_aggregate_aligned(_Config) ->
                          {aggregate, {sum, {1, seconds}}},
                          {align, true}]),
     meck:unload(),
+    ok.
+
+t_sum_aggregate_aligned_different_types(_Config) ->
+    meck:new(freya_reader, [passthrough]),
+    meck:expect(freya_reader, read_row_size, fun() -> 2 end),
+    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    MetricName  = ?th:randomize(<<"t_sum_aggregate_aligned_different_types">>),
+    Ts = freya_utils:floor(tic:now_to_epoch_msecs(), {1, seconds}),
+    DPIn1 = freya_data_point:new(MetricName, Ts+1, <<"kairos_long">>, 1),
+    DPIn2 = freya_data_point:new(MetricName, Ts+2, <<"kairos_long">>, 1),
+    DPIn3 = freya_data_point:new(MetricName, Ts+3, <<"kairos_long">>, 1),
+    DPIn4 = freya_data_point:new(MetricName, Ts+4, <<"kairos_long">>, 1),
+    DPIn5 = freya_data_point:new(MetricName, Ts+1, <<"kairos_double">>, 1.0),
+    DPIn6 = freya_data_point:new(MetricName, Ts+2, <<"kairos_double">>, 1.0),
+    DPIn7 = freya_data_point:new(MetricName, Ts+3, <<"kairos_double">>, 1.0),
+    DPIn8 = freya_data_point:new(MetricName, Ts+4, <<"kairos_double">>, 1.0),
+    ok = freya_writer:save(Publisher, DPIn1),
+    ok = freya_writer:save(Publisher, DPIn2),
+    ok = freya_writer:save(Publisher, DPIn3),
+    ok = freya_writer:save(Publisher, DPIn4),
+    ok = freya_writer:save(Publisher, DPIn5),
+    ok = freya_writer:save(Publisher, DPIn6),
+    ok = freya_writer:save(Publisher, DPIn7),
+    ok = freya_writer:save(Publisher, DPIn8),
+    timer:sleep(2500),
+    DPOut1 = DPIn1#data_point{value=4, ts=Ts},
+    DPOut2 = DPIn5#data_point{value=4.0, ts=Ts},
+    {ok, [DPOut3, DPOut4]} =
+    freya_reader:search(?CS_READ_POOL,
+                        [{metric_name, MetricName},
+                         {start_time, Ts},
+                         {aggregate, {sum, {1, seconds}}},
+                         {align, true}]),
+    meck:unload(),
+    true = sets:from_list([DPOut1, DPOut2]) =:= sets:from_list([DPOut3, DPOut4]),
     ok.
 
 t_avg_aggregate(_Config) ->

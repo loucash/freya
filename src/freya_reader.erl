@@ -13,9 +13,6 @@
 % exported for tests
 -export([read_row_size/0]).
 
-% exported for pmap
--export([do_search_data_points/3]).
-
 -type option()  :: {metric_name, binary()} |
                    {start_time, milliseconds()} |
                    {end_time, milliseconds()} |
@@ -201,8 +198,7 @@ matching_tags(RowTags) ->
 
 %% @doc Return result of querying each rowkey, done in parallel using pmap
 search_data_points(Pool, #search{}=S, Rows) ->
-    Results0 = rpc:pmap({?MODULE, do_search_data_points},
-                        [Pool, S], Rows),
+    Results0 = freya_utils:pmap(fun do_search_data_points/3, [Pool, S], Rows),
     Results1 = lists:foldl(fun({error, _}=Error, _) -> Error;
                               (_, {error, _}=Error) -> Error;
                               ({ok, DataPoints}, Acc) -> [DataPoints|Acc] end,
@@ -342,9 +338,9 @@ epoch_fun(#search{start_time=StartTime, aggregator={_,Precision}}) ->
             ((Ts - StartTime) div Range) * Range + StartTime
     end.
 
-%% @doc Return a function to to fold over list of data points
+%% @doc Return a function to fold over list of data points
 fold_data_points_fun(#search{}=S) ->
-    AggregateFun     = aggregate_fun(S),
+    AggregateFun = aggregate_fun(S),
     fun(#data_point{}=DP, #aggr{}=Acc0) ->
         Acc = maybe_emit(DP, Acc0),
         AggregateFun(DP, Acc)
@@ -390,8 +386,8 @@ aggregator_fun(avg) ->
 
 %% @doc Generate a key for grouping values in one interval,
 %% at the moment we support only time grouping
-aggregator_key(#data_point{ts=Ts}, #aggr{epoch_fun=EpochFun}) ->
-    EpochFun(Ts).
+aggregator_key(#data_point{ts=Ts, type=Type}, #aggr{epoch_fun=EpochFun}) ->
+    [{ts, EpochFun(Ts)}, {type, Type}].
 
 %% @doc Check if an interval is finished and if so, emits aggregated data
 maybe_emit(#data_point{ts=Ts}, #aggr{epoch=undefined, epoch_fun=EpochFun}=Acc0) ->
