@@ -23,4 +23,4 @@ version() ->
     {Y,M,D,Hr,Min,Sec} = CompileTime,
     BuildDate = tic:datetime_to_iso8601({{Y,M,D},{Hr,Min,Sec}}),
     Version = [atom_to_list(?MODULE), " ", Vsn, " build: ", BuildDate],
-    {ok, Version}.
+    {ok, iolist_to_binary(Version)}.

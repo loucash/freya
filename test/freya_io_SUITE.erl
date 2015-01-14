@@ -324,5 +324,5 @@ t_avg_aggregate_aligned(_Config) ->
 t_tcp_version(_Config) ->
     {ok, Client} = freya_tcp_client:start_link(),
     {ok, Vsn} = freya:version(),
-    {ok, Vsn} = freya_tcp_client:version(Client),
-    {ok, Vsn} = freya_tcp_client:version(Client).
+    {ok, [[{<<"version">>, Vsn}]]} = freya_tcp_client:version(Client),
+    {ok, [[{<<"version">>, Vsn}]]} = freya_tcp_client:version(Client).
