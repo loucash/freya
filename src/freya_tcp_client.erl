@@ -5,8 +5,11 @@
 %% API
 -export([start_link/0, start_link/1, start_link/3]).
 -export([stop/1]).
+-export([put_metric/3]).
+-export([put_metric/4]).
 -export([put_metric/5]).
 -export([version/1]).
+-export([status/1]).
 
 %% mainly for mocking
 -export([send/2]).
@@ -26,9 +29,10 @@
 -record(state, { host          :: string(),
                  port          :: non_neg_integer(),
                  socket        :: port(),
-                 opts          :: term() }).
+                 opts          :: term()
+                 }).
 
--define(TCP_OPTS, [binary,{active, false}, {keepalive, true}, {packet, 0}]).
+-define(TCP_OPTS, [binary,{active, false}, {keepalive, true}, {packet, 2}]).
 
 -define(RECONNECT_TIME_MSECS , 1000).
 -define(TCP_RECV_LEN         , 0).
@@ -46,13 +50,23 @@ start_link(Host, Port, Opts) ->
     gen_fsm:start_link(?MODULE, [Host, Port, Opts], []).
 
 stop(Conn) ->
-    gen_fsm:sync_send_all_state_event(Conn, shutdown).
+    gen_fsm:sync_send_all_state_event(Conn, shutdown, infinity).
 
-put_metric(Conn, M, TS, V, Tags) when is_pid(Conn) ->
-    gen_fsm:sync_send_event(Conn, {put_metric, {M, TS, V, Tags}}).
+put_metric(Conn, M, V) ->
+    Now = tic:now_to_epoch_msecs(),
+    put_metric(Conn, M, Now, [], V).
+
+put_metric(Conn, M, TS, V) ->
+    put_metric(Conn, M, TS, [], V).
+
+put_metric(Conn, M, TS, Tags, V) when is_pid(Conn) ->
+    gen_fsm:send_event(Conn, {put_metric, {M, TS, Tags, V}}).
 
 version(Conn) ->
     gen_fsm:sync_send_event(Conn, version).
+
+status(Conn) ->
+    gen_fsm:sync_send_event(Conn, status, timer:seconds(10)).
 
 %%%===================================================================
 %%% gen_fsm callbacks
@@ -89,22 +103,28 @@ connecting(_Event, _From, State) ->
     Reply = {error, connecting},
     {reply, Reply, connecting, State}.
 
-connected(Msg, S1) ->
-    error({unknown_message, Msg}).
-
-connected(version, _From, S1) ->
-    Reply = freya_version(S1),
-    {reply, Reply, connected, S1};
-connected({put_metric, {M, TS, V, Tags}}, _From, S1) ->
-    Raw = freya_tcp_codec:encode({command, M, TS, V, Tags}),
+connected({put_metric, {M, TS, Tags, V}}, S1) ->
+    N = <<"freya.tcp.client.put_metric">>,
+    T = quintana:begin_timed(N),
+    Raw = freya_tcp_codec:encode_put({M, TS, Tags, V}),
     case send(Raw, S1) of
         ok ->
-            {reply, ok, connected, S1};
+            quintana:notify_timed(T),
+            {next_state, connected, S1};
         {error, _}=E ->
             _ = schedule_reconnect(),
             S2 = close_connection(S1),
-            {reply, E, connecting, S2}
-    end;
+            quintana:notify_timed(T),
+            lager:error("Error while putting metric ~p", [E]),
+            {next_state, connected, S2}
+    end.
+
+connected(status, _From, S1) ->
+    Reply = freya_status(S1),
+    {reply, Reply, connected, S1};
+connected(version, _From, S1) ->
+    Reply = freya_version(S1),
+    {reply, Reply, connected, S1};
 connected(_Event, _From, State) ->
     Reply = {error, unknown_call},
     {reply, Reply, connected, State}.
@@ -123,13 +143,10 @@ handle_sync_event(Event, _From, StateName, State) ->
 
 handle_info({'EXIT', _, _}=Info, _StateName, S1) ->
     close_connection(S1),
-    {stop, {crash, Info}, S1};
-handle_info(Info, _, S1) ->
-    lager:error("Unexpected message: ~p", [Info]),
-    {noreply, S1}.
+    {stop, {crash, Info}, S1}.
 
 terminate(Reason, _StateName, #state{}=S1) ->
-    lager:info("freya connection terminating: ~p", [Reason]),
+    lager:notice("freya connection terminating: ~p", [Reason]),
     close_connection(S1),
     ok.
 
@@ -151,12 +168,26 @@ close_connection(#state{socket=Sock}=State) ->
     State#state{socket=undefined}.
 
 freya_version(S1) ->
-    Raw = freya_tcp_codec:encode(version),
+    Raw = freya_tcp_codec:encode_version(),
     case send(Raw, S1) of
         ok ->
             case freya_wait_reply(S1) of
                 Data when is_binary(Data) ->
-                    {ok, freya_tcp_codec:decode(Data)};
+                     freya_tcp_codec:decode(Data);
+                {error, _}=E ->
+                    E
+            end;
+        {error, _R}=E ->
+            E
+    end.
+
+freya_status(S1) ->
+    Raw = freya_tcp_codec:encode_status(),
+    case send(Raw, S1) of
+        ok ->
+            case freya_wait_reply(S1) of
+                Data when is_binary(Data) ->
+                    freya_tcp_codec:decode(Data);
                 {error, _}=E ->
                     E
             end;
