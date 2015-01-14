@@ -7,6 +7,7 @@
 -behaviour(gen_server).
 
 -include("freya.hrl").
+-include("freya_metrics.hrl").
 
 %% API
 -export([start_link/1]).
@@ -48,7 +49,7 @@ statements() ->
 
 -spec save(eqm:pub(), data_point()) -> ok | {error, no_capacity}.
 save(Publisher, #data_point{}=DP) ->
-    T = quintana:begin_timed(<<"freya.writer.blob">>),
+    T = quintana:begin_timed(?Q_WRITER_BLOB),
     Qrys = save_data_point_queries(DP),
     R = eqm_pub:post(Publisher, Qrys),
     quintana:notify_timed(T),
@@ -76,7 +77,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({mail, _, Queries0, _}, #state{write_delay=WriteDelay}=State) ->
-    T = quintana:begin_timed(<<"freya.writer.batch">>),
+    T = quintana:begin_timed(?Q_WRITER_BATCH),
     Queries = lists:flatten(Queries0),
     {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(?CS_WRITE_POOL),
     Client = erlcql_cluster_worker:get_client(Worker),

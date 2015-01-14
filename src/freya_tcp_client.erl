@@ -104,8 +104,7 @@ connecting(_Event, _From, State) ->
     {reply, Reply, connecting, State}.
 
 connected({put_metric, {M, TS, Tags, V}}, S1) ->
-    N = <<"freya.tcp.client.put_metric">>,
-    T = quintana:begin_timed(N),
+    T = quintana:begin_timed(?Q_PUT_METRIC),
     Raw = freya_tcp_codec:encode_put({M, TS, Tags, V}),
     case send(Raw, S1) of
         ok ->

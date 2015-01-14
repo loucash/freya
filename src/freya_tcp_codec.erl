@@ -1,5 +1,6 @@
 -module(freya_tcp_codec).
 -include("freya_tcp.hrl").
+-include("freya_metrics.hrl").
 
 -export([encode_version/0]).
 -export([encode_status/0]).
@@ -36,8 +37,7 @@ encode_wire(<<Packet/binary>>) ->
 -spec decode(binary()) -> {ok, [term()]}
                           | {error, term()}.
 decode(Stream) ->
-    N = <<"freya.codec.decode_stream">>,
-    T = quintana:begin_timed(N),
+    T = quintana:begin_timed(?Q_DECODE_STREAM),
     R = decode(Stream, []),
     quintana:notify_timed(T),
     R.

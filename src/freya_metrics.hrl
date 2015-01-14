@@ -1,0 +1,5 @@
+-define(Q_DECODE_STREAM  , <<"freya.codec.decode_stream">>).
+-define(Q_HANDLE_PACKETS , <<"freya.tcp.connection.handle_packets">>).
+-define(Q_PUT_METRIC     , <<"freya.tcp.connection.put_metric">>).
+-define(Q_WRITER_BLOB    , <<"freya.writer.blob">>).
+-define(Q_WRITER_BATCH   , <<"freya.writer.batch">>).

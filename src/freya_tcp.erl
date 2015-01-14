@@ -9,6 +9,7 @@
 -export([init/4]).
 
 -include("freya_tcp.hrl").
+-include("freya_metrics.hrl").
 
 -spec start(eqm:pub()) -> ok.
 start(Publisher) ->
@@ -40,7 +41,7 @@ loop(State = #proto{socket=Sock, transport=Trans, codec=Codec}) ->
     receive
         {tcp, Sock, Data} ->
             lager:info("Received on socket ~p", [Data]),
-            T = quintana:begin_timed(<<"freya.tcp.handle_packets">>),
+            T = quintana:begin_timed(?Q_HANDLE_PACKETS),
             {ok, Packets} = Codec:decode(Data),
             {ok, NewState} = handle_packets(Packets, State),
             quintana:notify_timed(T),
