@@ -2,15 +2,14 @@
  {description, "Fast distributed scalable time series database written primarily for Cassandra"},
  {vsn, "0.1.0"},
  {applications, [stdlib, kernel, lager, ranch, erlcql_cluster, eqm, poolboy,
-tic, kvlists]},
+                 tic, kvlists, msgpack, quintana, folsomite]},
  {registered, []},
  {mod, {freya_app, []}},
  {env, [
     {writers_size, 50},
     {write_delay, 1000},
-    {write_batch_size, 50},
     {read_row_size, 10240},
-
+    {write_batch_size, 100},
     {cassandra_keyspace, <<"freya">>},
     {cassandra_read_consistency, quorum},
     {cassandra_write_consistency, quorum},

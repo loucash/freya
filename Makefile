@@ -1,4 +1,5 @@
 PROJECT := freya
+SNAME := $(PROJECT)
 
 ERL := erl
 EPATH = -pa ebin -pz deps/*/ebin
@@ -57,7 +58,7 @@ test: compile-fast cassandra-freya
 
 test-console: test-compile
 	@erlc $(TEST_EPATH) -o test test/*.erl
-	$(ERL) -sname $(PROJECT)_test  $(TEST_EPATH)
+	$(ERL) -sname $(PROJECT)_test  $(TEST_EPATH) -config sys
 
 cassandra-freya:
 	$(CQLSH) < ./priv/schema.cql
@@ -67,4 +68,7 @@ dev: compile-fast dev-console
 dev-clean: cassandra-freya dev
 
 dev-console:
-	$(ERL) -sname $(PROJECT) $(EPATH) -s freya
+	$(ERL) -sname $(SNAME) $(EPATH) -s freya -config sys
+
+spam:
+	@erl -pa deps/*/ebin -pa ebin -config sys -s lager
