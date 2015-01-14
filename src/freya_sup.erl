@@ -21,7 +21,9 @@ start_link() ->
 %%% Supervisor callbacks
 %%%===================================================================
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, []}}.
+    {ok, {{one_for_one, 5, 10},
+          [?CHILD(freya_tcp_status, freya_tcp_status, worker, [])]
+         }}.
 
 %%%===================================================================
 %%% Internal functions
