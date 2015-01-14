@@ -8,9 +8,8 @@
  {env, [
     {writers_size, 50},
     {write_delay, 1000},
-    {write_batch_size, 50},
     {read_row_size, 10240},
-
+    {write_batch_size, 100},
     {cassandra_keyspace, <<"freya">>},
     {cassandra_read_consistency, quorum},
     {cassandra_write_consistency, quorum},
