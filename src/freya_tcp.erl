@@ -66,5 +66,5 @@ handle_packets([Packet|Remaining],
         {error, Reason} ->
             lager:error("Freya protocol error: ~p", [Reason]),
             freya_tcp_status:dec(connections),
-            ok = Trans:close(State#proto.socket)
+            ok = Trans:close(Sock)
     end.
