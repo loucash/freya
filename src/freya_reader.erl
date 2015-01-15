@@ -6,6 +6,7 @@
 -module(freya_reader).
 
 -include("freya.hrl").
+-include("freya_reader.hrl").
 
 -export([statements/0]).
 -export([search/2]).
@@ -143,18 +144,18 @@ search_rows(Pool, Search) ->
 %% @doc Return query execute result
 do_search_rows(Client, #search{metric_name=MetricName, order=Order,
                                start_time=StartTs, end_time=undefined}) ->
-    StartRowTime = freya_utils:floor(StartTs, ?ROW_WIDTH),
-    {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartRowTime),
+    StartRowTime = freya_utils:floor(StartTs, ?RAW_ROW_WIDTH),
+    {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartRowTime, raw),
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_FROM_START(Order),
                           [MetricName, StartTsBin],
                           [read_consistency()]);
 do_search_rows(Client, #search{metric_name=MetricName, order=Order,
                                start_time=StartTs, end_time=EndTs}) ->
-    StartRowTime = freya_utils:floor(StartTs, ?ROW_WIDTH),
-    EndRowTime   = freya_utils:floor(EndTs, ?ROW_WIDTH) + 1,
-    {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartRowTime),
-    {ok, EndTsBin}   = freya_blobs:encode_search_key(MetricName, EndRowTime),
+    StartRowTime = freya_utils:floor(StartTs, ?RAW_ROW_WIDTH),
+    EndRowTime   = freya_utils:floor(EndTs, ?RAW_ROW_WIDTH) + 1,
+    {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartRowTime, raw),
+    {ok, EndTsBin}   = freya_blobs:encode_search_key(MetricName, EndRowTime, raw),
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_IN_RANGE(Order),
                           [MetricName, StartTsBin, EndTsBin],
@@ -185,8 +186,8 @@ match_row_fun(Tags) ->
 
 %% @doc Return a function to match two tags
 match_tag_fun({FilterKey, FilterValue}) ->
-    fun({Key, Value}) when FilterKey   =:= Key andalso
-                           FilterValue =:= Value -> true;
+    fun({Key, Values}) when FilterKey =:= Key ->
+            lists:member(FilterValue, Values);
        (_) -> false
     end.
 
@@ -287,7 +288,7 @@ start_time_bin(StartTime, RowProps) ->
 %% @doc Return binary format of end time offset
 end_time_bin(EndTime, RowProps) ->
     RowTime = proplists:get_value(row_time, RowProps),
-    RowWidthMs = freya_utils:ms(?ROW_WIDTH),
+    RowWidthMs = freya_utils:ms(?RAW_ROW_WIDTH),
     {ok, Bin} = case EndTime > (RowTime + RowWidthMs) of
                     true ->
                         freya_blobs:encode_offset(RowWidthMs+1);
