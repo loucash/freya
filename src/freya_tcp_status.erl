@@ -4,7 +4,8 @@
 
 -export([start_link/0]).
 
--export([inc/1,dec/1,query/1]).
+-export([inc/1,dec/1,inc/2,dec/2]).
+-export([query/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -20,10 +21,16 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 inc(Counter) ->
-    ets:update_counter(freya_stats, Counter, 1).
+    inc(Counter, 1).
+
+inc(Counter, N) ->
+    ets:update_counter(freya_stats, Counter, N).
 
 dec(Counter) ->
-    ets:update_counter(freya_stats, Counter, -1).
+    dec(Counter, -1).
+
+dec(Counter, N) ->
+    ets:update_counter(freya_stats, Counter, N).
 
 query(Counter) ->
     [{Counter, V}] = ets:lookup(freya_stats, Counter),

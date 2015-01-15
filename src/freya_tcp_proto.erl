@@ -36,7 +36,7 @@ inbound([?HDR, ?OPCODE_PUT, Name, Ts, Tags, Value], S)
     Pub = S#proto.publisher,
     case freya_writer:save(Pub, DP) of
         ok ->
-            freya_tcp_status:inc(metrics_saved);
+            ok;
         {error, no_capacity} ->
             freya_tcp_status:inc(metrics_dropped)
     end,
