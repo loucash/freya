@@ -4,10 +4,11 @@
 %%% @end
 %%%-------------------------------------------------------------------
 -module(freya_data_point).
--include("freya.hrl").
 
--export([new/0, new/4, new/5, of_props/1]).
+-export([new/0, new/3, new/4, of_props/1]).
 -export([encode/1, decode/3]).
+
+-include("freya.hrl").
 
 -define(blobs, freya_blobs).
 
@@ -18,17 +19,21 @@
 new() ->
     #data_point{}.
 
--spec new(metric_name(), milliseconds(), data_type(), data_value()) -> data_point().
-new(MetricName, Ts, Type, Value) ->
-    new(MetricName, Ts, Type, Value, []).
+-spec new(metric_name(), milliseconds(), data_value()) -> data_point().
+new(MetricName, Ts, Value) ->
+    new(MetricName, Ts, Value, []).
 
--spec new(metric_name(), milliseconds(), data_type(), data_value(), data_tags()) -> data_point().
-new(MetricName, Ts, Type, Value, Tags) ->
+-spec new(metric_name(), milliseconds(), data_value(), data_tags()) -> data_point().
+new(MetricName, Ts, Value, Tags) ->
+    new(MetricName, Ts, Value, Tags, []).
+
+-spec new(metric_name(), milliseconds(), data_value(), data_tags(), data_meta()) -> data_point().
+new(MetricName, Ts, Value, Tags, _Meta) ->
     #data_point{name        = MetricName,
                 ts          = Ts,
-                type        = Type,
+                type        = type(Value),
                 value       = Value,
-                tags        = Tags}.
+                tags        = freya_utils:sanitize_tags(Tags)}.
 
 -spec of_props(proplists:proplist()) -> data_point().
 of_props(Props) ->
@@ -87,3 +92,6 @@ decode_timestamp(RowTime, Bin, #data_point{}=DataPoint) ->
 decode_value(Val0, #data_point{type=Type}=DataPoint) ->
     {ok, Val} = ?blobs:decode_value(Val0, Type),
     {ok, DataPoint#data_point{value=Val}}.
+
+type(Value) when is_integer(Value) -> long;
+type(Value) when is_float(Value)   -> double.

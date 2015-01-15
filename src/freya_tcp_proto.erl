@@ -22,17 +22,7 @@ inbound([?HDR, ?OPCODE_PUT, Name, Ts, Tags, Value], S)
        andalso is_integer(Ts)
        andalso is_list(Tags)
        andalso is_number(Value) ->
-    Type = case Value of
-               _ when is_float(Value) -> <<"kairos_double">>;
-               _ when is_integer(Value) -> <<"kairos_long">>
-           end,
-    DP = #data_point{
-            name = Name,
-            ts = Ts,
-            type = Type,
-            tags = Tags,
-            value = Value
-           },
+    DP = freya_data_point:new(Name, Ts, Value, Tags),
     Pub = S#proto.publisher,
     case freya_writer:save(Pub, DP) of
         ok ->

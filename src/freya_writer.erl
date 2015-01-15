@@ -8,6 +8,7 @@
 
 -include("freya.hrl").
 -include("freya_metrics.hrl").
+-include("freya_writer.hrl").
 
 %% API
 -export([start_link/1]).

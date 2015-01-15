@@ -28,14 +28,13 @@ t_encode_decode_rowkey(_Config) ->
 
 %% PropEr
 prop_encode_decode_rowkey() ->
-    ?FORALL({MetricName, Timestamp, DataType, Tags, Value},
-            {metric_name(), timestamp(), data_type(), tags(), value()},
+    ?FORALL({MetricName, Timestamp, Tags, Value},
+            {metric_name(), timestamp(), tags(), value()},
            begin
-               DataPoint1 = #data_point{name=MetricName, ts=Timestamp,
-                                        type=DataType, tags=Tags, value=Value},
-               {ok, {Row, Ts, Val}} = freya_data_point:encode(DataPoint1),
-               {ok, DataPoint2} = freya_data_point:decode(Row, Ts, Val),
-               DataPoint1 =:= DataPoint2
+               DP1 = freya_data_point:new(MetricName, Timestamp, Value, Tags),
+               {ok, {Row, Ts, Val}} = freya_data_point:encode(DP1),
+               {ok, DP2} = freya_data_point:decode(Row, Ts, Val),
+               DP1 =:= DP2
            end).
 
 metric_name() ->
@@ -53,9 +52,6 @@ timestamp() ->
 
 value() ->
     proper_types:non_neg_integer().
-
-data_type() ->
-    oneof([<<"kairos_long">>]).
 
 tags() ->
     list(?LET({K,V}, {utf8_bin(), utf8_bin()}, {K,V})).

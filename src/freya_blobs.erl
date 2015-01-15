@@ -5,43 +5,89 @@
 %%%-------------------------------------------------------------------
 -module(freya_blobs).
 
+-export([encode_rowkey/4,
+         encode_timestamp/1,
+         encode_timestamp/2,
+         encode_offset/1,
+         encode_value/2]).
+-export([decode_rowkey/1,
+         decode_timestamp/2,
+         decode_offset/1,
+         decode_value/2]).
+-export([encode_search_key/3]).
+
 -include("freya.hrl").
 
--export([encode_rowkey/4, encode_timestamp/1, encode_offset/1, encode_value/2]).
--export([decode_rowkey/1, decode_timestamp/2, decode_offset/1, decode_value/2]).
--export([encode_search_key/2]).
+-define(MODEL_VERSION, 16#01).
+
+-define(TYPE_LONG,   16#01).
+-define(TYPE_DOUBLE, 16#02).
+
+-define(RAW_DATA, 16#00).
+
+-define(FUN_MAX, 16#01).
+-define(FUN_MIN, 16#02).
+-define(FUN_AVG, 16#03).
+-define(FUN_SUM, 16#04).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 -spec encode_rowkey(metric_name(), milliseconds(), data_type(), data_tags()) ->
     {ok, binary()}.
-encode_rowkey(MetricName, Ts, DataType, Tags) ->
-    RowTime         = freya_utils:floor(Ts, ?ROW_WIDTH),
-    DataTypeSize    = byte_size(DataType),
-    {ok, TagsBin}   = pack_tags(Tags),
-    Bin = <<MetricName/binary, 0:8/integer, RowTime:64/integer,
-            0:8/integer, DataTypeSize:8/integer, DataType/binary,
-            TagsBin/binary>>,
+encode_rowkey(MetricName, Ts, Type, Tags) ->
+    encode_rowkey(MetricName, Ts, Type, Tags, ?RAW_ROW_WIDTH, raw).
+
+encode_rowkey(MetricName, Ts, Type, Tags0, RowWidth, DataPrecision) ->
+    RowTime          = freya_utils:floor(Ts, RowWidth),
+    MetricNameLength = byte_size(MetricName),
+    {AggregateFun,
+     AggregateParam1,
+     AggregateParam2} = encode_data_precision(DataPrecision),
+    DataType         = encode_data_type(Type),
+    Tags             = encode_tags(Tags0),
+    TagsLength       = byte_size(Tags),
+
+    Bin = <<?MODEL_VERSION:8/integer,
+            MetricNameLength:16/integer,
+            MetricName/binary,
+            AggregateFun:8/integer,
+            AggregateParam1:64/integer,
+            AggregateParam2:64/integer,
+            RowTime:64/integer,
+            DataType:8/integer,
+            TagsLength:16/integer,
+            Tags/binary>>,
     {ok, Bin}.
 
 -spec decode_rowkey(binary()) -> {ok, proplists:proplist()} | {error, any()}.
-decode_rowkey(Bin0) when is_binary(Bin0) ->
-    Fns = [fun decode_metric_name/1,
-           fun decode_row_timestamp/1,
-           fun decode_datatype/1,
-           fun decode_tags/1],
-    Result = hope_result:pipe(Fns, {[], Bin0}),
-    case Result of
-        {ok, {Parsed, _}} ->
-            {ok, Parsed};
-        {error, _} = Error ->
-            Error
-    end.
+decode_rowkey(<<?MODEL_VERSION:8/integer,
+                MetricNameLength:16/integer,
+                MetricName:MetricNameLength/binary-unit:8,
+                AggregateFun:8/integer,
+                AggregateParam1:64/integer,
+                AggregateParam2:64/integer,
+                RowTime:64/integer,
+                DataType:8/integer,
+                TagsLength:16/integer,
+                Tags:TagsLength/binary-unit:8
+              >>) ->
+    Result = [{name,        MetricName},
+              {row_time,    RowTime},
+              {type,        decode_data_type(DataType)},
+              {tags,        decode_tags(Tags)},
+              {precision,   decode_data_precision(AggregateFun,
+                                                  AggregateParam1,
+                                                  AggregateParam2)}],
+    {ok, Result}.
 
 -spec encode_timestamp(milliseconds()) -> {ok, binary()}.
 encode_timestamp(Ts) ->
-    RowTime = freya_utils:floor(Ts, ?ROW_WIDTH),
+    encode_timestamp(Ts, ?RAW_ROW_WIDTH).
+
+-spec encode_timestamp(milliseconds(), milliseconds() | precision()) -> {ok, binary()}.
+encode_timestamp(Ts, RowWidth) ->
+    RowTime = freya_utils:floor(Ts, RowWidth),
     Offset = Ts - RowTime,
     encode_offset(Offset).
 
@@ -59,80 +105,67 @@ decode_offset(<<Offset:31/integer, _:1>>) ->
     {ok, Offset}.
 
 -spec encode_value(binary(), any()) -> {ok, binary()}.
-encode_value(<<"kairos_long">>, Value) ->
+encode_value(long, Value) ->
     {ok, pack_long(Value)};
-encode_value(<<"kairos_legacy">>, Value) ->
-    Long = pack_long(Value),
-    {ok, <<0:8, Long/binary>>};
-encode_value(<<"kairos_double">>, Value) ->
-    {ok, <<Value/float>>};
-encode_value(<<"kairos_string">>, Value) ->
-    {ok, Value};
-encode_value(<<"kairos_complex">>, {Real, Imag}) ->
-    {ok, <<Real/float, Imag/float>>}.
+encode_value(double, Value) ->
+    {ok, <<Value/float>>}.
 
 -spec decode_value(any(), binary()) -> {ok, any()}.
-decode_value(Value, <<"kairos_long">>) ->
+decode_value(Value, long) ->
     {ok, unpack_long(Value)};
-decode_value(<<0:8, Value/binary>>, <<"kairos_legacy">>) ->
-    {ok, unpack_long(Value)};
-decode_value(<<Value/float>>, <<"kairos_double">>) ->
-    {ok, Value};
-decode_value(Value, <<"kairos_string">>) ->
-    {ok, Value};
-decode_value(<<Real/float, Imag/float>>, <<"kairos_complex">>) ->
-    {ok, {Real, Imag}}.
+decode_value(<<Value/float>>, double) ->
+    {ok, Value}.
 
--spec encode_search_key(metric_name(), milliseconds()) -> {ok, binary()}.
-encode_search_key(MetricName, Ts) ->
-    Bin = <<MetricName/binary, 0:8/integer, Ts:64/integer>>,
+-spec encode_search_key(metric_name(), milliseconds(), data_precision()) -> {ok, binary()}.
+encode_search_key(MetricName, Ts, DataPrecision) ->
+    MetricNameLength = byte_size(MetricName),
+    {AggregateFun,
+     AggregateParam1,
+     AggregateParam2} = encode_data_precision(DataPrecision),
+
+    Bin = <<?MODEL_VERSION:8/integer,
+            MetricNameLength:16/integer,
+            MetricName/binary,
+            AggregateFun:16/integer,
+            AggregateParam1:64/integer,
+            AggregateParam2:64/integer,
+            Ts:64/integer>>,
     {ok, Bin}.
 
 %%%===================================================================
 %%% Internal
 %%%===================================================================
-decode_metric_name({Props, Bin}) ->
-    case extract_metric_name(Bin, []) of
-        {ok, {MetricName, Rest}} ->
-            {ok, {[{name, MetricName}|Props], Rest}};
-        {error, _} = Error ->
-            Error
-    end.
+encode_data_precision(raw) ->
+    {?RAW_DATA, ?RAW_DATA, ?RAW_DATA};
+encode_data_precision({Fun, Precision}) ->
+    {encode_aggregate_fun(Fun), freya_utils:ms(Precision), ?RAW_DATA}.
 
-extract_metric_name(<<0, Rest/binary>>, Acc) ->
-    {ok, {list_to_binary(lists:reverse(Acc)), Rest}};
-extract_metric_name(<<H, Rest/binary>>, Acc) ->
-    extract_metric_name(Rest, [H | Acc]);
-extract_metric_name(<<>>, _Acc) ->
-    {error, invalid_blob}.
+decode_data_precision(?RAW_DATA, _, _) -> raw;
+decode_data_precision(Fun, Precision, _) ->
+    {decode_aggregate_fun(Fun), Precision}.
 
-decode_row_timestamp({Props, <<RowTime:64, Rest/binary>>}) ->
-    {ok, {[{row_time, RowTime}|Props], Rest}}.
+encode_aggregate_fun(max) -> ?FUN_MAX;
+encode_aggregate_fun(min) -> ?FUN_MIN;
+encode_aggregate_fun(avg) -> ?FUN_AVG;
+encode_aggregate_fun(sum) -> ?FUN_SUM.
 
-decode_datatype({Props, <<0, Len:8/integer, DataType:Len/binary-unit:8, Rest/binary>>}) ->
-    {ok, {[{type, DataType}|Props], Rest}};
-decode_datatype({Props, Rest}) ->
-    {ok, {Props, Rest}}.
+decode_aggregate_fun(?FUN_MAX) -> max;
+decode_aggregate_fun(?FUN_MIN) -> min;
+decode_aggregate_fun(?FUN_AVG) -> avg;
+decode_aggregate_fun(?FUN_SUM) -> sum.
 
-decode_tags({Props, <<>>=Bin}) ->
-    {ok, {Props, Bin}};
-decode_tags({Props, Bin}) ->
-    {ok, Tags} = unpack_tags(Bin),
-    {ok, {[{tags,Tags}|Props], Bin}}.
+encode_data_type(long)   -> ?TYPE_LONG;
+encode_data_type(double) -> ?TYPE_DOUBLE.
 
-pack_tags([]) -> {ok, <<>>};
-pack_tags(Tags) when is_list(Tags) ->
-    KVs = lists:map(fun({K, V}) -> <<K/binary, "=", V/binary>> end, Tags),
-    {ok, bstr:join(KVs, <<":">>)}.
+decode_data_type(?TYPE_LONG) -> long;
+decode_data_type(?TYPE_DOUBLE) -> double.
 
-unpack_tags(Bin) ->
-    Res = lists:map(
-            fun([K, V]) -> {K, V} end,
-            lists:filtermap(
-              fun(<<>>) -> false;
-                 (KV) -> {true, binary:split(KV, <<"=">>)} end,
-              binary:split(Bin, <<":">>, [global]))),
-    {ok, Res}.
+encode_tags([]) -> <<>>;
+encode_tags(Tags) ->
+    sext:encode(freya_utils:sanitize_tags(Tags)).
+
+decode_tags(<<>>) -> [];
+decode_tags(Tags) -> sext:decode(Tags).
 
 % https://developers.google.com/protocol-buffers/docs/encoding?csw=1#types
 pack_long(Value) when is_integer(Value) ->
