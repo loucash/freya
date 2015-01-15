@@ -27,8 +27,8 @@
 
 -define(FUN_MAX, 16#01).
 -define(FUN_MIN, 16#02).
--define(FUN_AVG, 16#04).
--define(FUN_SUM, 16#08).
+-define(FUN_AVG, 16#03).
+-define(FUN_SUM, 16#04).
 
 %%%===================================================================
 %%% API
@@ -51,7 +51,7 @@ encode_rowkey(MetricName, Ts, Type, Tags0, RowWidth, DataPrecision) ->
     Bin = <<?MODEL_VERSION:8/integer,
             MetricNameLength:16/integer,
             MetricName/binary,
-            AggregateFun:16/integer,
+            AggregateFun:8/integer,
             AggregateParam1:64/integer,
             AggregateParam2:64/integer,
             RowTime:64/integer,
@@ -64,7 +64,7 @@ encode_rowkey(MetricName, Ts, Type, Tags0, RowWidth, DataPrecision) ->
 decode_rowkey(<<?MODEL_VERSION:8/integer,
                 MetricNameLength:16/integer,
                 MetricName:MetricNameLength/binary-unit:8,
-                AggregateFun:16/integer,
+                AggregateFun:8/integer,
                 AggregateParam1:64/integer,
                 AggregateParam2:64/integer,
                 RowTime:64/integer,
