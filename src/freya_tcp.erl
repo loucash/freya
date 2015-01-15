@@ -38,19 +38,25 @@ init(Ref, Socket, Transport, Opts) ->
                 publisher=Pub, version=iolist_to_binary(Vsn)}).
 
 loop(State = #proto{socket=Sock, transport=Trans, codec=Codec}) ->
-    ok = Trans:setopts(Sock, [{active,once},{packet,2}]),
+    ok = Trans:setopts(Sock, [{active,once},{packet,0}]),
     receive
         {tcp, Sock, Data} ->
             lager:info("Received on socket ~p", [Data]),
             T = quintana:begin_timed(?Q_HANDLE_PACKETS),
-            {ok, Packets} = Codec:decode(Data),
-            {ok, NewState} = handle_packets(Packets, State),
+            S2 = case Codec:decode(Data, State#proto.buffer) of
+                {ok, Packets} ->
+                    {ok, NewState} = handle_packets(Packets, State),
+                    NewState#proto{buffer=undefined};
+                {incomplete, {Stream, AlreadyDecoded}} ->
+                    {ok, NewState} = handle_packets(AlreadyDecoded, State),
+                    NewState#proto{buffer=Stream}
+            end,
             quintana:notify_timed(T),
-            loop(NewState);
-        Other ->
-            lager:notice("Clossing connection: ~p", [Other]),
-            freya_tcp_status:dec(connections),
-            ok = Trans:close(Sock)
+            loop(S2);
+        {tcp_closed=Reason, Sock} ->
+            close(Trans, Sock, Reason);
+        {tcp_error, Sock, Reason} ->
+            close(Trans, Sock, Reason)
     end.
 
 handle_packets([], State) ->
@@ -67,5 +73,10 @@ handle_packets([Packet|Remaining],
         {error, Reason} ->
             lager:error("Freya protocol error: ~p", [Reason]),
             freya_tcp_status:dec(connections),
-            ok = Trans:close(Sock)
+            close(Trans, Sock, Reason)
     end.
+
+close(Trans, Sock, Reason) ->
+    lager:notice("Clossing connection: ~p", [Reason]),
+    freya_tcp_status:dec(connections),
+    ok = Trans:close(Sock).

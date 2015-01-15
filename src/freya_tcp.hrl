@@ -11,5 +11,6 @@
                  socket                 :: inet:socket(),
                  transport              :: any(),
                  publisher              :: eqm:pub(),
-                 version                :: iodata() 
+                 version                :: iodata(),
+                 buffer                 :: iodata()
                }).

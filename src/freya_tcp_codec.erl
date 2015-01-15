@@ -8,9 +8,7 @@
 
 -export([encode/1]).
 -export([decode/1]).
-
--export([encode_wire/1]).
-
+-export([decode/2]).
 
 encode_version() ->
     encode([?HDR, ?OPCODE_VERSION]).
@@ -21,32 +19,27 @@ encode_put({Name, Ts, Tags, V}) ->
 encode_status() ->
     encode([?HDR, ?OPCODE_STATUS]).
 
-
 -spec encode(term()) -> iodata().
 encode(Term) ->
-    encode_wire(msgpack:pack(Term, [{format, jsx}])).
+    msgpack:pack(Term, [{format, jsx}]).
 
-
--spec encode_wire(binary() | iolist()) -> binary().
-encode_wire(Packet) when is_list(Packet) ->
-    encode_wire(iolist_to_binary(Packet));
-encode_wire(<<Packet/binary>>) ->
-    Packet.
-
-
--spec decode(binary()) -> {ok, [term()]}
-                          | {error, term()}.
 decode(Stream) ->
-    T = quintana:begin_timed(?Q_DECODE_STREAM),
-    R = decode(Stream, []),
-    quintana:notify_timed(T),
-    R.
+    decode(Stream, undefined).
 
-decode(<<>>, Buffer) ->
-    {ok, lists:reverse(Buffer)};
-decode(Stream, Buffer) ->
-    case msgpack:unpack_stream(Stream, [{format, jsx}]) of
-        {error, R} -> error({?MODULE, R});
-        {Packet, Rest} ->
-            decode(Rest, [Packet|Buffer])
+decode(Stream, undefined) ->
+    do_decode(Stream);
+decode(Stream, Buffered) ->
+    do_decode(<<Buffered/binary, Stream/binary>>).
+
+do_decode(Stream) ->
+    do_decode(Stream, []).
+
+do_decode(Stream, AlreadyDecoded) ->
+    case msgpack:unpack_stream(Stream, [{format,jsx}]) of
+        {error, incomplete} ->
+            {incomplete, {Stream, lists:reverse(AlreadyDecoded)}};
+        {Result, <<>>} ->
+            {ok, lists:reverse([Result|AlreadyDecoded])};
+        {Result, Next} ->
+            do_decode(Next, [Result|AlreadyDecoded])
     end.

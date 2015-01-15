@@ -33,7 +33,8 @@
                  opts          :: term()
                  }).
 
--define(TCP_OPTS, [binary,{active, false}, {keepalive, true}, {packet, 2}]).
+-define(TCP_OPTS, [binary, {active,false},
+                   {keepalive,true}, {packet,0}]).
 
 -define(RECONNECT_TIME_MSECS , 1000).
 -define(TCP_RECV_LEN         , 0).
