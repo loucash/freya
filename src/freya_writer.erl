@@ -82,12 +82,13 @@ handle_info({mail, _, Queries0, _}, #state{write_delay=WriteDelay}=State) ->
     {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(?CS_WRITE_POOL),
     Client = erlcql_cluster_worker:get_client(Worker),
     Res = erlcql_client:batch(Client, Queries, [consistency()]),
+    L = length(Queries0),
     case Res of
         {ok, _} ->
-            % log ok
+            freya_tcp_status:inc(metrics_saved, L),
             ok;
-        {error, _Reason} ->
-            % log error
+        {error, Reason} ->
+            lager:error("Error during batch save: ~p", [Reason]),
             error
     end,
     erlcql_cluster:checkin(Resource),
