@@ -6,7 +6,8 @@
 -module(freya_data_point).
 
 -export([new/0, new/3, new/4, of_props/1]).
--export([encode/1, decode/3]).
+-export([encode/1, encode/2, decode/3]).
+-export([name/1, tags/1, ts/1, value/1]).
 
 -include("freya.hrl").
 
@@ -47,6 +48,22 @@ of_props(Props) ->
        value    = Get2(value, Props)
       }.
 
+-spec name(data_point()) -> metric_name().
+name(#data_point{name=Name}) ->
+    Name.
+
+-spec tags(data_point()) -> data_tags().
+tags(#data_point{tags=Tags}) ->
+    Tags.
+
+-spec ts(data_point()) -> milliseconds().
+ts(#data_point{ts=Ts}) ->
+    Ts.
+
+-spec value(data_point()) -> data_value().
+value(#data_point{value=Value}) ->
+    Value.
+
 -spec decode(binary(), binary(), binary()) ->
     {ok, data_point()} | {error, any()}.
 decode(Row, Timestamp, Value) ->
@@ -58,9 +75,15 @@ decode(Row, Timestamp, Value) ->
     hope_result:pipe(Fns, new()).
 
 -spec encode(data_point()) -> {ok, {binary(), binary(), binary()}}.
-encode(#data_point{name=MetricName, ts=Ts, type=DataType, tags=Tags, value=Value0}) ->
-    {ok, Row}       = ?blobs:encode_rowkey(MetricName, Ts, DataType, Tags),
-    {ok, Timestamp} = ?blobs:encode_timestamp(Ts),
+encode(DataPoint) ->
+    encode(DataPoint, raw).
+
+-spec encode(data_point(), data_precision()) ->
+    {ok, {binary(), binary(), binary()}}.
+encode(#data_point{name=MetricName, ts=Ts, type=DataType, tags=Tags, value=Value0},
+       DataPrecision) ->
+    {ok, Row}       = ?blobs:encode_rowkey(MetricName, Ts, DataType, Tags, DataPrecision),
+    {ok, Timestamp} = ?blobs:encode_timestamp(Ts, DataPrecision),
     {ok, Value}     = ?blobs:encode_value(DataType, Value0),
     {ok, {Row, Timestamp, Value}}.
 

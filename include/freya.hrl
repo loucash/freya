@@ -1,8 +1,9 @@
--type metric_name()   :: binary().
--type milliseconds()  :: non_neg_integer().
+-type metric_name()     :: binary().
+-type milliseconds()    :: non_neg_integer().
+-type ttl()             :: non_neg_integer().
 -type unit()            :: seconds | minutes | hours | days | weeks.
 -type aggregate()       :: avg | min | max | sum.
--type precision()       :: {non_neg_integer(), unit()}.
+-type precision()       :: {non_neg_integer(), unit()} | non_neg_integer().
 
 -record(data_point,{
           name      :: metric_name(),
@@ -24,8 +25,12 @@
 -define(AGGREGATES, [avg, min, max, sum]).
 -define(UNITS, [seconds, minutes, hours, days, weeks, months, years]).
 
-% data model temporary constants
--define(RAW_ROW_WIDTH, {3, weeks}).
+% cassandra limit is 2 billions, we set max size to 1.9 billion
+-define(MAX_ROW_WIDTH, 1900000000).
+% cassandra max ttl: 20 years
+-define(MAX_TTL, 630720000).
+% maximum time period per row: 20 years
+-define(MAX_WEEKS, 1042).
 
 % erlcql_cluster pool
 -type pool_name()   :: atom().

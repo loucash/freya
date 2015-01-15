@@ -19,6 +19,7 @@
                    {end_time, milliseconds()} |
                    {align, boolean()} |
                    {aggregate, {aggregate(), precision()}} |
+                   {source, data_precision()} |
                    {tags, proplists:proplist()} |
                    {order, data_order()}.
 -type options() :: [option()].
@@ -30,7 +31,8 @@
           align = false     :: boolean(),
           aggregator        :: undefined | {aggregate(), precision()},
           tags              :: proplists:proplist(),
-          order = asc       :: data_order()
+          order  = asc      :: data_order(),
+          source = raw      :: data_precision()
          }).
 -type search()  :: #search{}.
 
@@ -88,7 +90,7 @@ verify_options([{end_time, End}|Options], Search) when is_integer(End) ->
     verify_options(Options, Search#search{end_time=End});
 verify_options([{align, Bool}|Options], Search) when is_boolean(Bool) ->
     verify_options(Options, Search#search{align=Bool});
-verify_options([{aggregate, {Fun, {Val, Type}}}|Options], Search) ->
+verify_options([{aggregate, {Fun, {Val, Type}}}|Options], Search) when is_integer(Val) ->
     case lists:member(Fun, ?AGGREGATES) of
         true ->
             case lists:member(Type, ?UNITS) of
@@ -104,6 +106,27 @@ verify_options([{tags, List}|Options], Search) when is_list(List) ->
     verify_options(Options, Search#search{tags=List});
 verify_options([{order, Order}|Options], Search) when Order =:= asc orelse Order =:= desc ->
     verify_options(Options, Search#search{order=Order});
+verify_options([{source, raw}|Options], Search) ->
+    verify_options(Options, Search#search{source=raw});
+verify_options([{source, {Fun, {Val, Type}}}|Options], Search) when is_integer(Val) ->
+    case lists:member(Fun, ?AGGREGATES) of
+        true ->
+            case lists:member(Type, ?UNITS) of
+                true ->
+                    verify_options(Options, Search#search{source={Fun, {Val, Type}}});
+                false ->
+                    {error, bad_precision}
+            end;
+        false ->
+            {error, bad_aggregate}
+    end;
+verify_options([{source, {Fun, Val}}|Options], Search) when is_integer(Val) ->
+    case lists:member(Fun, ?AGGREGATES) of
+        true ->
+            verify_options(Options, Search#search{source={Fun, Val}});
+        false ->
+            {error, bad_aggregate}
+    end;
 verify_options([Opt|_], _Search) ->
     {error, {bad_option, Opt}}.
 
@@ -142,18 +165,20 @@ search_rows(Pool, Search) ->
     end.
 
 %% @doc Return query execute result
-do_search_rows(Client, #search{metric_name=MetricName, order=Order,
+do_search_rows(Client, #search{metric_name=MetricName, order=Order, source=Source,
                                start_time=StartTs, end_time=undefined}) ->
-    StartRowTime = freya_utils:floor(StartTs, ?RAW_ROW_WIDTH),
+    RowWidth     = freya_utils:row_width(Source),
+    StartRowTime = freya_utils:floor(StartTs, RowWidth),
     {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartRowTime, raw),
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_FROM_START(Order),
                           [MetricName, StartTsBin],
                           [read_consistency()]);
-do_search_rows(Client, #search{metric_name=MetricName, order=Order,
+do_search_rows(Client, #search{metric_name=MetricName, order=Order, source=Source,
                                start_time=StartTs, end_time=EndTs}) ->
-    StartRowTime = freya_utils:floor(StartTs, ?RAW_ROW_WIDTH),
-    EndRowTime   = freya_utils:floor(EndTs, ?RAW_ROW_WIDTH) + 1,
+    RowWidth     = freya_utils:row_width(Source),
+    StartRowTime = freya_utils:floor(StartTs, RowWidth),
+    EndRowTime   = freya_utils:floor(EndTs, RowWidth) + 1,
     {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartRowTime, raw),
     {ok, EndTsBin}   = freya_blobs:encode_search_key(MetricName, EndRowTime, raw),
     erlcql_client:execute(Client,
@@ -243,10 +268,10 @@ query_data_points({RowKey, RowProps}=Row, Client,
     end;
 query_data_points({RowKey, RowProps}=Row, Client,
                   #search{start_time=StartTime, end_time=EndTime,
-                          order=Order}=S, Acc) ->
+                          order=Order, source=Source}=S, Acc) ->
     ReadRowSize     = ?MODULE:read_row_size(),
     StartOffsetBin  = start_time_bin(StartTime, RowProps),
-    EndOffsetBin    = end_time_bin(EndTime, RowProps),
+    EndOffsetBin    = end_time_bin(EndTime, RowProps, Source),
     QueryResult     = erlcql_client:execute(
                         Client, ?SELECT_DATA_IN_RANGE(Order),
                         [RowKey, StartOffsetBin, EndOffsetBin, ReadRowSize],
@@ -286,9 +311,10 @@ start_time_bin(StartTime, RowProps) ->
     Bin.
 
 %% @doc Return binary format of end time offset
-end_time_bin(EndTime, RowProps) ->
-    RowTime = proplists:get_value(row_time, RowProps),
-    RowWidthMs = freya_utils:ms(?RAW_ROW_WIDTH),
+end_time_bin(EndTime, RowProps, Source) ->
+    RowTime    = proplists:get_value(row_time, RowProps),
+    RowWidth   = freya_utils:row_width(Source),
+    RowWidthMs = freya_utils:ms(RowWidth),
     {ok, Bin} = case EndTime > (RowTime + RowWidthMs) of
                     true ->
                         freya_blobs:encode_offset(RowWidthMs+1);

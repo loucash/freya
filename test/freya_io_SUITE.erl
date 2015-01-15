@@ -2,6 +2,8 @@
 
 -export([all/0, suite/0, init_per_suite/1, end_per_suite/1]).
 -export([t_write_read_data_point/1,
+         t_write_read_aggregate/1,
+         t_write_read_aggregate_with_ttl/1,
          t_write_read_different_rows/1,
          t_read_row_size/1,
          t_read_row_size_and_desc/1,
@@ -28,6 +30,8 @@ suite() ->
 all() ->
     [
      t_write_read_data_point,
+     t_write_read_aggregate,
+     t_write_read_aggregate_with_ttl,
      t_write_read_different_rows,
      t_read_row_size,
      t_read_row_size_and_desc,
@@ -64,11 +68,49 @@ t_write_read_data_point(_Config) ->
                                                                {start_time, Ts}])
                                   end, 100, 200).
 
+t_write_read_aggregate(_Config) ->
+    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    MetricName  = ?th:randomize(<<"t_write_read_aggregate">>),
+    Ts = tic:now_to_epoch_msecs(),
+    DPIn = freya_data_point:new(MetricName, Ts, 1),
+    ok = freya_writer:save(Publisher, DPIn, [{aggregate, {sum, {1, hours}}}]),
+    ?th:keep_trying({ok, [DPIn]},
+                    fun() ->
+                            freya_reader:search(?CS_READ_POOL,
+                                                [{metric_name, MetricName},
+                                                 {start_time, Ts},
+                                                 {source, {sum, {1, hours}}}])
+                    end, 100, 200).
+
+t_write_read_aggregate_with_ttl(_Config) ->
+    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    MetricName  = ?th:randomize(<<"t_write_read_aggregate_with_ttl">>),
+    Ts = tic:now_to_epoch_msecs(),
+    DPIn = freya_data_point:new(MetricName, Ts, 1),
+    ok = freya_writer:save(Publisher, DPIn, [{ttl, 3},
+                                             {aggregate, {sum, {1, hours}}}]),
+    ?th:keep_trying({ok, [DPIn]},
+                    fun() ->
+                            freya_reader:search(?CS_READ_POOL,
+                                                [{metric_name, MetricName},
+                                                 {start_time, Ts},
+                                                 {source, {sum, {1, hours}}}])
+                    end, 100, 200),
+    ?th:keep_trying({ok, []},
+                    fun() ->
+                            freya_reader:search(?CS_READ_POOL,
+                                                [{metric_name, MetricName},
+                                                 {start_time, Ts},
+                                                 {source, {sum, {1, hours}}}])
+                    end, 100, 200).
+
 t_write_read_different_rows(_Config) ->
     {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
     MetricName  = ?th:randomize(<<"test_write_read_different_rows">>),
+    RowWidth    = freya_utils:row_width(raw),
+    RowWidthMs  = freya_utils:ms(RowWidth),
     Ts1 = tic:now_to_epoch_msecs(),
-    Ts2 = tic:now_to_epoch_msecs() + freya_utils:ms(?RAW_ROW_WIDTH)+1,
+    Ts2 = tic:now_to_epoch_msecs() + RowWidthMs+1,
     DPIn1 = freya_data_point:new(MetricName, Ts1, 1),
     DPIn2 = freya_data_point:new(MetricName, Ts2, 1),
     ok = freya_writer:save(Publisher, DPIn1),
@@ -136,7 +178,7 @@ t_start_end_time(_Config) ->
     ok = freya_writer:save(Publisher, DPIn3),
     ok = freya_writer:save(Publisher, DPIn4),
     ?th:keep_trying({ok, [DPIn1, DPIn2]},
-                    fun() ->freya_reader:search(?CS_READ_POOL,
+                    fun() -> freya_reader:search(?CS_READ_POOL,
                                                 [{metric_name, MetricName},
                                                  {start_time, Ts},
                                                  {end_time, Ts+1}])
@@ -145,8 +187,9 @@ t_start_end_time(_Config) ->
 t_start_end_time_different_rowkeys(_Config) ->
     {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
     MetricName  = ?th:randomize(<<"test_start_end_time">>),
-    Ts1 = freya_utils:floor(tic:now_to_epoch_msecs(), ?RAW_ROW_WIDTH),
-    Ts2 = freya_utils:ceil(tic:now_to_epoch_msecs(), ?RAW_ROW_WIDTH),
+    RowWidth    = freya_utils:row_width(raw),
+    Ts1 = freya_utils:floor(tic:now_to_epoch_msecs(), RowWidth),
+    Ts2 = freya_utils:ceil(tic:now_to_epoch_msecs(), RowWidth),
     DPIn1 = freya_data_point:new(MetricName, Ts1, 1),
     DPIn2 = freya_data_point:new(MetricName, Ts2, 1),
     ok = freya_writer:save(Publisher, DPIn1),
