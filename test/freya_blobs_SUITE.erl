@@ -42,9 +42,9 @@ metric_name() ->
 
 utf8_bin() ->
     ?LET(S,
-         list(oneof([integer(16#30, 16#39),
-                     integer(16#41, 16#5A),
-                     integer(16#61, 16#7A)])),
+         non_empty(list(oneof([integer(16#30, 16#39),
+                               integer(16#41, 16#5A),
+                               integer(16#61, 16#7A)]))),
          list_to_binary(S)).
 
 timestamp() ->
