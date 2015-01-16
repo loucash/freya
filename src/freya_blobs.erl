@@ -165,10 +165,10 @@ decode_data_type(?TYPE_DOUBLE) -> double.
 
 encode_tags([]) -> <<>>;
 encode_tags(Tags) ->
-    sext:encode(freya_utils:sanitize_tags(Tags)).
+    msgpack:pack(freya_utils:sanitize_tags(Tags), [{format,jsx}]).
 
 decode_tags(<<>>) -> [];
-decode_tags(Tags) -> sext:decode(Tags).
+decode_tags(Tags) -> msgpack:unpack(Tags, [{format,jsx}]).
 
 % https://developers.google.com/protocol-buffers/docs/encoding?csw=1#types
 pack_long(Value) when is_integer(Value) ->
