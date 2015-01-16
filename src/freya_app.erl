@@ -19,8 +19,6 @@ start(_StartType, _StartArgs) ->
 stop(_State) ->
     ok.
 
-
-
 start_cassandra_cluster() ->
     {ok, CassandraPools} = freya:get_env(cassandra_pools),
     start_cassandra_pools(CassandraPools).

@@ -10,6 +10,7 @@
     {write_delay, 800},
     {read_row_size, 10240},
     {write_batch_size, 500},
+    {raw_ttl, 86400},
     {cassandra_keyspace, <<"freya">>},
     {cassandra_read_consistency, quorum},
     {cassandra_write_consistency, quorum},

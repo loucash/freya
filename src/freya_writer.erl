@@ -13,7 +13,7 @@
 %% API
 -export([start_link/1]).
 -export([statements/0]).
--export([save/2]).
+-export([save/2, save/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -29,6 +29,8 @@
           timer
          }).
 
+-type save_options() :: [{ttl, ttl()} | {aggregate, data_precision()}].
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -43,15 +45,25 @@ statements() ->
      {?INSERT_ROW_INDEX,
       <<"INSERT INTO row_key_index (metric_name, rowkey, unused) "
         "VALUES (?, ?, ?);">>},
+     {?INSERT_ROW_INDEX_TTL,
+      <<"INSERT INTO row_key_index (metric_name, rowkey, unused) "
+        "VALUES (?, ?, ?) USING TTL ?;">>},
      {?INSERT_STRING_INDEX,
       <<"INSERT INTO string_index (type, value, unused) "
         "VALUES (?, ?, ?);">>}
     ].
 
 -spec save(eqm:pub(), data_point()) -> ok | {error, no_capacity}.
-save(Publisher, #data_point{}=DP) ->
+save(Publisher, DP) ->
+    TTL = freya:get_env(raw_ttl, infinity),
+    save(Publisher, DP, [{aggregate, raw}, {ttl, TTL}]).
+
+-spec save(eqm:pub(), data_point(), save_options()) -> ok | {error, no_capacity}.
+save(Publisher, DataPoint, Opts) ->
     T = quintana:begin_timed(?Q_WRITER_BLOB),
-    Qrys = save_data_point_queries(DP),
+    TTL = proplists:get_value(ttl, Opts, infinity),
+    DataPrecision = proplists:get_value(aggregate, Opts, raw),
+    Qrys = save_data_point_queries(DataPoint, TTL, DataPrecision),
     R = eqm_pub:post(Publisher, Qrys),
     quintana:notify_timed(T),
     R.
@@ -125,14 +137,39 @@ consistency() ->
     A = freya:get_env(cassandra_write_consistency, quorum),
     {consistency, A}.
 
--spec save_data_point_queries(data_point()) -> list().
-save_data_point_queries(#data_point{}=DP) ->
-    {ok, {Row, Column, Value}} = freya_data_point:encode(DP),
-    [{?INSERT_DATA_POINT, [Row, Column, Value]},
-     {?INSERT_ROW_INDEX, [DP#data_point.name, Row, <<0>>]},
-     {?INSERT_STRING_INDEX, [?ROW_KEY_METRIC_NAMES, DP#data_point.name, <<0>>]}]
+-spec save_data_point_queries(data_point(), ttl(), data_precision()) -> list().
+save_data_point_queries(DP, TTL, DataPrecision) ->
+    Name = freya_data_point:name(DP),
+    Tags = freya_data_point:tags(DP),
+    {ok, {RowKey, Offset, Value}} = freya_data_point:encode(DP, DataPrecision),
+    [insert_data_point(RowKey, Offset, Value, TTL),
+     insert_row_index(Name, RowKey, TTL, DataPrecision),
+     insert_string_index(?ROW_KEY_METRIC_NAMES, Name)]
     ++ lists:flatmap(
-         fun({TagName, TagValue}) ->
-            [{?INSERT_STRING_INDEX, [?ROW_KEY_TAG_NAMES, TagName, <<0>>]},
-             {?INSERT_STRING_INDEX, [?ROW_KEY_TAG_VALUES, TagValue, <<0>>]}]
-         end, DP#data_point.tags).
+         fun({TagName, TagValues}) ->
+            [insert_string_index(?ROW_KEY_TAG_NAMES, TagName)]
+            ++ lists:map(
+                 fun(TagValue) ->
+                    insert_string_index(?ROW_KEY_TAG_VALUES, TagValue)
+                 end, TagValues)
+         end, Tags).
+
+insert_data_point(RowKey, Offset, Value, infinity) ->
+    {?INSERT_DATA_POINT, [RowKey, Offset, Value]};
+insert_data_point(RowKey, Offset, Value, TTL) when is_integer(TTL) ->
+    {?INSERT_DATA_POINT_TTL, [RowKey, Offset, Value, TTL]}.
+
+insert_row_index(Name, RowKey, infinity, _DataPrecision) ->
+    {?INSERT_ROW_INDEX, [Name, RowKey, <<0>>]};
+insert_row_index(Name, RowKey, TTL, DataPrecision) ->
+    RowIndexTTL = row_index_ttl(TTL, DataPrecision),
+    {?INSERT_ROW_INDEX_TTL, [Name, RowKey, <<0>>, RowIndexTTL]}.
+
+row_index_ttl(TTL, DataPrecision) ->
+    RowWidth    = freya_utils:row_width(DataPrecision),
+    RowWidthMs  = freya_utils:ms(RowWidth),
+    RowWidthSeconds = RowWidthMs div 1000,
+    lists:min([?MAX_TTL, RowWidthSeconds + TTL]).
+
+insert_string_index(Key, Value) ->
+    {?INSERT_STRING_INDEX, [Key, Value, <<0>>]}.

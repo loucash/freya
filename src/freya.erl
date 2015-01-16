@@ -6,10 +6,10 @@
 -define(APP, ?MODULE).
 
 start() ->
-    application:ensure_all_started(?APP).
+    reltool_util:application_start(?APP).
 
 stop() ->
-    application:stop(?APP).
+    reltool_util:application_stop(?APP).
 
 get_env(Name) ->
     application:get_env(?APP, Name).

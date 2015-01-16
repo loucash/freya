@@ -5,6 +5,7 @@
 
 -export([floor/2, ceil/2, prev/2, next/2, ms/1]).
 -export([sanitize_tags/1]).
+-export([row_width/1]).
 -export([pmap/3, pmap/4]).
 
 -spec floor(milliseconds(), precision() | milliseconds()) ->
@@ -90,3 +91,17 @@ gather([Pid|T], Ref, Timeout) ->
     end;
 gather([], _, _) ->
     [].
+
+% @doc We calculate row width in weeks
+-spec row_width(data_precision()) -> precision().
+row_width(raw) ->
+    calc_row_width(1);
+row_width({_, Precision}) ->
+    calc_row_width(Precision).
+
+-spec calc_row_width(precision()) -> precision().
+calc_row_width(Ms) when is_tuple(Ms) ->
+    calc_row_width(ms(Ms));
+calc_row_width(Ms) ->
+    Weeks = (Ms * ?MAX_ROW_WIDTH) div ms({1, weeks}),
+    {lists:min([?MAX_WEEKS, Weeks]), weeks}.

@@ -6,6 +6,7 @@
 -module(freya_blobs).
 
 -export([encode_rowkey/4,
+         encode_rowkey/5,
          encode_timestamp/1,
          encode_timestamp/2,
          encode_offset/1,
@@ -36,9 +37,10 @@
 -spec encode_rowkey(metric_name(), milliseconds(), data_type(), data_tags()) ->
     {ok, binary()}.
 encode_rowkey(MetricName, Ts, Type, Tags) ->
-    encode_rowkey(MetricName, Ts, Type, Tags, ?RAW_ROW_WIDTH, raw).
+    encode_rowkey(MetricName, Ts, Type, Tags, raw).
 
-encode_rowkey(MetricName, Ts, Type, Tags0, RowWidth, DataPrecision) ->
+encode_rowkey(MetricName, Ts, Type, Tags0, DataPrecision) ->
+    RowWidth         = freya_utils:row_width(DataPrecision),
     RowTime          = freya_utils:floor(Ts, RowWidth),
     MetricNameLength = byte_size(MetricName),
     {AggregateFun,
@@ -83,17 +85,18 @@ decode_rowkey(<<?MODEL_VERSION:8/integer,
 
 -spec encode_timestamp(milliseconds()) -> {ok, binary()}.
 encode_timestamp(Ts) ->
-    encode_timestamp(Ts, ?RAW_ROW_WIDTH).
+    encode_timestamp(Ts, raw).
 
--spec encode_timestamp(milliseconds(), milliseconds() | precision()) -> {ok, binary()}.
-encode_timestamp(Ts, RowWidth) ->
-    RowTime = freya_utils:floor(Ts, RowWidth),
-    Offset = Ts - RowTime,
+-spec encode_timestamp(milliseconds(), data_precision()) -> {ok, binary()}.
+encode_timestamp(Ts, DataPrecision) ->
+    RowWidth = freya_utils:row_width(DataPrecision),
+    RowTime  = freya_utils:floor(Ts, RowWidth),
+    Offset   = Ts - RowTime,
     encode_offset(Offset).
 
 -spec encode_offset(milliseconds()) -> {ok, binary()}.
 encode_offset(Offset) ->
-    {ok, <<Offset:31/integer, 0:1>>}.
+    {ok, <<Offset:64/integer>>}.
 
 -spec decode_timestamp(binary(), milliseconds()) -> {ok, milliseconds()}.
 decode_timestamp(OffsetBin, RowTime) ->
@@ -101,7 +104,7 @@ decode_timestamp(OffsetBin, RowTime) ->
     {ok, RowTime+Offset}.
 
 -spec decode_offset(binary()) -> {ok, milliseconds()}.
-decode_offset(<<Offset:31/integer, _:1>>) ->
+decode_offset(<<Offset:64/integer>>) ->
     {ok, Offset}.
 
 -spec encode_value(binary(), any()) -> {ok, binary()}.
@@ -126,7 +129,7 @@ encode_search_key(MetricName, Ts, DataPrecision) ->
     Bin = <<?MODEL_VERSION:8/integer,
             MetricNameLength:16/integer,
             MetricName/binary,
-            AggregateFun:16/integer,
+            AggregateFun:8/integer,
             AggregateParam1:64/integer,
             AggregateParam2:64/integer,
             Ts:64/integer>>,
