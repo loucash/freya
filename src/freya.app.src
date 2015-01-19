@@ -2,7 +2,7 @@
  {description, "Fast distributed scalable time series database written primarily for Cassandra"},
  {vsn, "0.1.0"},
  {applications, [stdlib, kernel, lager, ranch, erlcql_cluster, eqm, poolboy,
-                 tic, kvlists, msgpack, quintana, folsomite]},
+                 tic, kvlists, msgpack, quintana, folsomite, cowboy, jsx]},
  {registered, []},
  {mod, {freya_app, []}},
  {env, [

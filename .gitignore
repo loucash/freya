@@ -1,7 +1,10 @@
 deps/*
 ebin/*
 log/*
+priv/ui.tar.gz
+priv/ui
 logs/*
 erl_crash.dump
 test/*.beam
 stress/*.beam
+ct_log/*

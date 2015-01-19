@@ -40,3 +40,8 @@
 % poolboy writers
 -define(CS_WRITERS_POOL,    freya_writers).
 -define(CS_WRITERS_PUB,     freya_writers_pub).
+
+% string index keys
+-define(ROW_KEY_METRIC_NAMES,   <<"metric_names">>).
+-define(ROW_KEY_TAG_NAMES,      <<"tag_names">>).
+-define(ROW_KEY_TAG_VALUES,     <<"tag_values">>).

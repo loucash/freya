@@ -9,7 +9,8 @@
 -include("freya_reader.hrl").
 
 -export([statements/0]).
--export([search/2]).
+-export([search/1, search/2]).
+-export([metric_names/0, metric_names/1]).
 
 % exported for tests
 -export([read_row_size/0]).
@@ -64,8 +65,14 @@ statements() ->
         "rowkey = ? AND offset >= ? AND offset <= ? LIMIT ?;">>},
      {?SELECT_DATA_IN_RANGE_DESC,
       <<"SELECT offset, value FROM data_points WHERE "
-        "rowkey = ? AND offset >= ? AND offset <= ? ORDER BY offset DESC LIMIT ?;">>}
+        "rowkey = ? AND offset >= ? AND offset <= ? ORDER BY offset DESC LIMIT ?;">>},
+     {?SELECT_STRING_INDEX,
+      <<"SELECT value FROM string_index where type = ?;">>}
     ].
+
+-spec search(options()) -> {ok, list()} | {error, any()}.
+search(Options) ->
+    search(?CS_READ_POOL, Options).
 
 -spec search(pool_name(), options()) -> {ok, list()} | {error, any()}.
 search(Pool, Options) when is_list(Options) ->
@@ -75,6 +82,17 @@ search(Pool, Options) when is_list(Options) ->
         {error, _} = Error ->
             Error
     end.
+
+-spec metric_names() -> {ok, list()} | {error, any()}.
+metric_names() ->
+    metric_names(?CS_READ_POOL).
+
+-spec metric_names(pool_name()) -> {ok, list()} | {error, any()}.
+metric_names(Pool) ->
+    with_pool(Pool, fun(Client) ->
+                            erlcql_client:execute(Client, ?SELECT_STRING_INDEX,
+                                                  [?ROW_KEY_METRIC_NAMES], [read_consistency()])
+                    end).
 
 %%%===================================================================
 %%% Internal
@@ -88,6 +106,8 @@ verify_options([{start_time, Start}|Options], Search) when is_integer(Start) ->
     verify_options(Options, Search#search{start_time=Start});
 verify_options([{end_time, End}|Options], Search) when is_integer(End) ->
     verify_options(Options, Search#search{end_time=End});
+verify_options([{end_time, undefined}|Options], Search) ->
+    verify_options(Options, Search);
 verify_options([{align, Bool}|Options], Search) when is_boolean(Bool) ->
     verify_options(Options, Search#search{align=Bool});
 verify_options([{aggregate, {Fun, {Val, Type}}}|Options], Search) when is_integer(Val) ->
@@ -152,17 +172,21 @@ do_search(Pool, #search{}=S) ->
     ],
     hope_result:pipe(Fns, undefined).
 
-%% @doc Return rowkeys indexes in row_key_index
-search_rows(Pool, Search) ->
+%% @doc Perform erlcql routine on a checked out pool resource
+with_pool(Pool, F) when is_function(F, 1) ->
     {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(Pool),
     Client = erlcql_cluster_worker:get_client(Worker),
-    Result = do_search_rows(Client, Search),
+    Result = F(Client),
     erlcql_cluster:checkin(Resource),
     case Result of
         {ok, {[], _}} -> {error, not_found};
         {ok, {RowKeys, _}} -> {ok, lists:flatten(RowKeys)};
         {error, _} = Error -> Error
     end.
+
+%% @doc Return rowkeys indexes in row_key_index
+search_rows(Pool, Search) ->
+    with_pool(Pool, fun(Client) -> do_search_rows(Client, Search) end).
 
 %% @doc Return query execute result
 do_search_rows(Client, #search{metric_name=MetricName, order=Order, source=Source,
