@@ -106,6 +106,8 @@ verify_options([{start_time, Start}|Options], Search) when is_integer(Start) ->
     verify_options(Options, Search#search{start_time=Start});
 verify_options([{end_time, End}|Options], Search) when is_integer(End) ->
     verify_options(Options, Search#search{end_time=End});
+verify_options([{end_time, undefined}|Options], Search) ->
+    verify_options(Options, Search);
 verify_options([{align, Bool}|Options], Search) when is_boolean(Bool) ->
     verify_options(Options, Search#search{align=Bool});
 verify_options([{aggregate, {Fun, {Val, Type}}}|Options], Search) when is_integer(Val) ->
