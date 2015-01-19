@@ -4,8 +4,10 @@
 -define(DEFAULT_PMAP_TIMEOUT, 5000).
 
 -export([floor/2, ceil/2, prev/2, next/2, ms/1]).
+-export([aggregator_funs/1, aggregate_key/4]).
 -export([sanitize_tags/1]).
 -export([row_width/1]).
+-export([wait_for_reqid/2]).
 -export([pmap/3, pmap/4]).
 
 -spec floor(milliseconds(), precision() | milliseconds()) ->
@@ -105,3 +107,44 @@ calc_row_width(Ms) when is_tuple(Ms) ->
 calc_row_width(Ms) ->
     Weeks = (Ms * ?MAX_ROW_WIDTH) div ms({1, weeks}),
     {lists:min([?MAX_WEEKS, Weeks]), weeks}.
+
+%% @doc Return a function that calculates aggregates
+aggregator_funs(max) ->
+    {fun(X, undefined) -> X;
+        (X, Acc) when X > Acc -> X;
+        (_, Acc) -> Acc end,
+     fun(X) -> X end};
+aggregator_funs(min) ->
+    {fun(X, undefined) -> X;
+        (X, Acc) when X < Acc -> X;
+        (_, Acc) -> Acc end,
+     fun(X) -> X end};
+aggregator_funs(sum) ->
+    {fun(X, undefined) -> X;
+        (X, Acc) -> X + Acc end,
+     fun(X) -> X end};
+aggregator_funs(avg) ->
+    {fun(X, undefined) -> {X, 1};
+        (X, {Avg0, N0}) ->
+             N    = N0 + 1,
+             Diff = X - Avg0,
+             Avg  = (Diff / N) + Avg0,
+             {Avg, N}
+     end,
+     fun({X, _}) -> X end}.
+
+aggregate_key(Metric, Tags, Ts, {Fun, Precision}) ->
+    Key = [{<<"tags">>, Tags},
+           {<<"ts">>, Ts},
+           {<<"fun">>, atom_to_binary(Fun, utf8)},
+           {<<"precision">>, freya_utils:ms(Precision)}],
+    {Metric, msgpack:pack(Key, [{format,jsx}])}.
+
+wait_for_reqid(ReqId, Timeout) ->
+    receive
+        {ok, ReqId} -> ok;
+        {ok, ReqId, Value} -> {ok, Value};
+        {error, ReqId, Reason} -> {error, Reason}
+    after Timeout ->
+              {error, timeout}
+    end.

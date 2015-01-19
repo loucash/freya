@@ -90,7 +90,8 @@ encode(#data_point{name=MetricName, ts=Ts, type=DataType, tags=Tags, value=Value
 %%%===================================================================
 %%% Internal
 %%%===================================================================
--spec decode_rowkey(binary(), data_point()) -> {ok, {data_point(), milliseconds()}}.
+-spec decode_rowkey(binary(), data_point()) -> {ok, {data_point(), milliseconds()}}
+                                             | {error, invalid}.
 decode_rowkey(Bin0, DataPoint0) when is_binary(Bin0) ->
     Get2 = fun proplists:get_value/2,
     Get3 = fun proplists:get_value/3,

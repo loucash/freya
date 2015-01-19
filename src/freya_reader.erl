@@ -365,10 +365,11 @@ to_data_point(RowProps0) ->
 
 %% @doc Helper record to fold over a list of data points
 -record(aggr, {
-          epoch         :: any(),
-          epoch_fun     :: fun(),
-          epoch_data    :: dict(),
-          timeline = [] :: [data_point()]
+          epoch             :: any(),
+          epoch_fun         :: fun(),
+          epoch_data        :: dict(),
+          aggregator_funs   :: {fun(), fun()},
+          timeline = []     :: [data_point()]
          }).
 
 %% @doc Aggregates data for given aggregator
@@ -376,8 +377,9 @@ maybe_aggregate_data(#search{aggregator=undefined}, Rows) ->
     {ok, Rows};
 maybe_aggregate_data(#search{}, []) ->
     {ok, []};
-maybe_aggregate_data(#search{}=S, Rows) ->
-    Aggr = #aggr{epoch_fun=epoch_fun(S)},
+maybe_aggregate_data(#search{aggregator={Fun, _}}=S, Rows) ->
+    Aggr = #aggr{epoch_fun=epoch_fun(S),
+                 aggregator_funs=freya_utils:aggregator_funs(Fun)},
     Result0 = lists:foldl(fold_data_points_fun(S), Aggr, Rows),
     #aggr{timeline=DataPoints} = emit(Result0),
     {ok, lists:reverse(DataPoints)}.
@@ -398,17 +400,17 @@ fold_data_points_fun(#search{}=S) ->
     end.
 
 %% @doc Return a function that aggregate given data point
-aggregate_fun(#search{aggregator={Fun, _}, align=Align}) ->
+aggregate_fun(#search{align=Align}) ->
     AggregatorStartFun  = aggregator_start_fun(Align),
-    AggregatorFun       = aggregator_fun(Fun),
-    fun(#data_point{value=V1}=DP0, #aggr{epoch_data=Data0}=Acc) ->
+    fun(#data_point{value=V1}=DP0, #aggr{epoch_data=Data0,
+                                         aggregator_funs={Accumulate, _}}=Acc) ->
         Key = aggregator_key(DP0, Acc),
         DP = case dict:find(Key, Data0) of
                  error ->
                      DP0#data_point{ts=AggregatorStartFun(DP0, Acc),
-                                    value=AggregatorFun(V1, undefined)};
+                                    value=Accumulate(V1, undefined)};
                  {ok, #data_point{value=V2}=DP1} ->
-                     DP1#data_point{value=AggregatorFun(V1, V2)}
+                     DP1#data_point{value=Accumulate(V1, V2)}
              end,
         Acc#aggr{epoch_data=dict:store(Key, DP, Data0)}
     end.
@@ -418,22 +420,6 @@ aggregator_start_fun(false) ->
     fun(#data_point{ts=Ts}, _Acc) -> Ts end;
 aggregator_start_fun(true) ->
     fun(#data_point{ts=Ts}, #aggr{epoch_fun=EpochFun}) -> EpochFun(Ts) end.
-
-%% @doc Return a function that calculates aggregates
-aggregator_fun(max) ->
-    fun(X, undefined) -> X;
-       (X, Acc) when X > Acc -> X;
-       (_, Acc) -> Acc end;
-aggregator_fun(min) ->
-    fun(X, undefined) -> X;
-       (X, Acc) when X < Acc -> X;
-       (_, Acc) -> Acc end;
-aggregator_fun(sum) ->
-    fun(X, undefined) -> X;
-       (X, Acc) -> X + Acc end;
-aggregator_fun(avg) ->
-    fun(X, undefined) -> X;
-       (X, Acc) -> (X + Acc) / 2 end.
 
 %% @doc Generate a key for grouping values in one interval,
 %% at the moment we support only time grouping
@@ -453,6 +439,10 @@ maybe_emit(#data_point{ts=Ts}, #aggr{epoch=Epoch, epoch_fun=EpochFun}=Acc0) ->
     end.
 
 %% @doc Emits aggregated data from current interval to timeline
-emit(#aggr{epoch_data=D, timeline=T}=A) ->
-    Values = [V || {_, V} <- dict:to_list(D)],
-    A#aggr{timeline=Values ++ T}.
+emit(#aggr{epoch_data=D, timeline=DataPoints, aggregator_funs={_, Emit}}=A) ->
+    EpochDataPoints0 = [DP || {_, DP} <- dict:to_list(D)],
+    EpochDataPoints  = lists:map(
+                         fun(#data_point{value=V}=DP) ->
+                            DP#data_point{value=Emit(V)}
+                         end, EpochDataPoints0),
+    A#aggr{timeline=EpochDataPoints ++ DataPoints}.

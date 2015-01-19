@@ -62,7 +62,7 @@ encode_rowkey(MetricName, Ts, Type, Tags0, DataPrecision) ->
             Tags/binary>>,
     {ok, Bin}.
 
--spec decode_rowkey(binary()) -> {ok, proplists:proplist()} | {error, any()}.
+-spec decode_rowkey(binary()) -> {ok, proplists:proplist()} | {error, invalid}.
 decode_rowkey(<<?MODEL_VERSION:8/integer,
                 MetricNameLength:16/integer,
                 MetricName:MetricNameLength/binary-unit:8,
@@ -81,7 +81,9 @@ decode_rowkey(<<?MODEL_VERSION:8/integer,
               {precision,   decode_data_precision(AggregateFun,
                                                   AggregateParam1,
                                                   AggregateParam2)}],
-    {ok, Result}.
+    {ok, Result};
+decode_rowkey(_) ->
+    {error, invalid}.
 
 -spec encode_timestamp(milliseconds()) -> {ok, binary()}.
 encode_timestamp(Ts) ->
@@ -107,13 +109,13 @@ decode_timestamp(OffsetBin, RowTime) ->
 decode_offset(<<Offset:64/integer>>) ->
     {ok, Offset}.
 
--spec encode_value(binary(), any()) -> {ok, binary()}.
+-spec encode_value(long | double, number()) -> {ok, binary()}.
 encode_value(long, Value) ->
     {ok, pack_long(Value)};
 encode_value(double, Value) ->
     {ok, <<Value/float>>}.
 
--spec decode_value(any(), binary()) -> {ok, any()}.
+-spec decode_value(binary(), long | double) -> {ok, number()}.
 decode_value(Value, long) ->
     {ok, unpack_long(Value)};
 decode_value(<<Value/float>>, double) ->

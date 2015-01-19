@@ -26,7 +26,7 @@ configure:
 	$(REBAR) get-deps compile
 
 console:
-	$(ERL) -sname $(PROJECT) $(EPATH)
+	$(ERL) -sname $(PROJECT) $(EPATH) -config riak_core
 
 deps:
 	$(REBAR) get-deps

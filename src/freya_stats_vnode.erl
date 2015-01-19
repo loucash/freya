@@ -1,5 +1,7 @@
--module(freya_rollups_vnode).
+-module(freya_stats_vnode).
 -behaviour(riak_core_vnode).
+
+-export([push/7]).
 
 -export([start_vnode/1,
          init/1,
@@ -22,11 +24,18 @@
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
+push(PrefList, Identity, Metric, Tags, Ts, Value, Aggregate) ->
+    riak_core_vnode_master:command(PrefList,
+                                   {push, Identity, Metric, Tags, Ts, Value, Aggregate},
+                                   {fsm, undefined, self()},
+                                   freya_stats_vnode_master).
+
 init([Partition]) ->
     {ok, #state { partition=Partition }}.
 
-handle_command(_Message, _Sender, State) ->
-    {noreply, State}.
+handle_command({push, {ReqId, _Coordinator}, _Metric, _Tags, _Ts, _Value, _Aggregate}, _Sender, State) ->
+    % TODO: fill with love
+    {reply, {ok, ReqId}, State}.
 
 handle_handoff_command(_Message, _Sender, State) ->
     {noreply, State}.

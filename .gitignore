@@ -9,3 +9,4 @@ test/*.beam
 stress/*.beam
 ct_log/*
 data
+rel/freya
