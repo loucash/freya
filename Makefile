@@ -1,4 +1,5 @@
 PROJECT := freya
+REBAR := ./rebar
 SNAME := $(PROJECT)
 
 ERL := erl
@@ -16,36 +17,38 @@ build_plt:
 	@dialyzer --build_plt --apps $(PLT_APPS)
 
 compile:
-	@./rebar compile
+	$(REBAR) compile
 
 compile-fast:
-	@./rebar skip_deps=true compile
+	$(REBAR) skip_deps=true compile
 
 configure:
-	@./rebar get-deps compile
+	$(REBAR) get-deps compile
 
 console:
 	$(ERL) -sname $(PROJECT) $(EPATH)
 
 deps:
-	@./rebar get-deps
+	$(REBAR) get-deps
 
 doc:
-	@./rebar skip_deps=true doc
+	$(REBAR) skip_deps=true doc
 
 clean:
-	@./rebar skip_deps=true clean
+	$(REBAR) skip_deps=true clean
 
 stress: compile
 	@erlc -o ./stress ./stress/stress.erl
 	@$(ERL) -sname $(PROJECT) $(EPATH) -pa stress
 
 depclean:
-	@./rebar clean
+	$(REBAR) clean
 
 distclean:
-	@./rebar clean delete-deps
+	$(REBAR) clean delete-deps
 	@rm -rf logs
+	@rm -rf ct_log
+	@rm -rf log
 
 dialyze:
 	@dialyzer $(DIALYZER_OPTS) -r ebin
@@ -54,7 +57,8 @@ start:
 	$(ERL) -sname $(PROJECT) $(EPATH) -s $(PROJECT)
 
 test: compile-fast cassandra-freya
-	@./rebar skip_deps=true ct verbose=1
+	$(REBAR) -C rebar.test.config get-deps compile
+	$(REBAR) -C rebar.test.config ct skip_deps=true
 
 test-console: test-compile
 	@erlc $(TEST_EPATH) -o test test/*.erl
