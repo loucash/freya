@@ -173,7 +173,7 @@ do_search(Pool, #search{}=S) ->
     hope_result:pipe(Fns, undefined).
 
 %% @doc Perform erlcql routine on a checked out pool resource
-with_pool(Pool, F) when is_function(F) ->
+with_pool(Pool, F) when is_function(F, 1) ->
     {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(Pool),
     Client = erlcql_cluster_worker:get_client(Worker),
     Result = F(Client),
