@@ -7,3 +7,4 @@ logs/*
 erl_crash.dump
 test/*.beam
 stress/*.beam
+ct_log/*
