@@ -77,3 +77,14 @@ kairosdb-ui: priv/ui
 
 priv/ui:
 	@cd priv && curl -O http://mtod.org/ui.tar.gz && tar xzfv ui.tar.gz
+
+ct-single:
+	@mkdir -p ct_log
+	@if [ -z "$(suite)" ] || [ -z "$(case)" ]; then \
+	    echo "Provide args. e.g. suite=freya_io case=t_tcp_write"; exit 1; \
+	    else true; fi
+	@ct_run -noshell -pa deps/*/ebin -pa ebin -include include -include src \
+	    -include deps/*/include -sname freya_test -logdir ct_log -ct_hooks cth_surefire \
+		-sasl sasl_error_logger false \
+	    -dir $(dir $(shell find . -name $(suite)_SUITE.erl)) -suite $(suite)_SUITE -case $(case)
+	@open ct_log/all_runs.html
