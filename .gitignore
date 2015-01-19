@@ -1,6 +1,8 @@
 deps/*
 ebin/*
 log/*
+priv/ui.tar.gz
+priv/ui
 logs/*
 erl_crash.dump
 test/*.beam
