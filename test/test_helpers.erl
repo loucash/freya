@@ -1,10 +1,14 @@
 -module(test_helpers).
 
+-export([setup_env/0]).
 -export([randomize/1]).
 -export([keep_trying/4]).
 -export([set_fixt_dir/2, load_fixt/2]).
 
 -include_lib("common_test/include/ct.hrl").
+
+setup_env() ->
+    ok = create_data_ring_dir().
 
 randomize(S) ->
     Ts = tic:now_to_epoch_usecs(),
@@ -41,3 +45,8 @@ load_fixt(Config, Filename) ->
     F = filename:join(?config(common_data_dir, Config), Filename),
     {ok, Fixture} = file:read_file(F),
     Fixture.
+
+create_data_ring_dir() ->
+    {ok, Dir} = file:get_cwd(),
+    filelib:ensure_dir(filename:join([Dir, "data", "ring", "file"])),
+    ok.

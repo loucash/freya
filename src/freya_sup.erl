@@ -21,8 +21,15 @@ start_link() ->
 %%% Supervisor callbacks
 %%%===================================================================
 init([]) ->
+    VMaster= {freya_vnode_master,
+              {riak_core_vnode_master, start_link, [freya_vnode]},
+              permanent, 5000, worker, [riak_core_vnode_master]},
+    Rollups= {freya_rollups_vnode_master,
+              {riak_core_vnode_master, start_link, [freya_rollups_vnode]},
+              permanent, 5000, worker, [riak_core_vnode_master]},
     {ok, {{one_for_one, 5, 10},
-          [?CHILD(freya_tcp_status, freya_tcp_status, worker, [])]
+          [VMaster, Rollups,
+           ?CHILD(freya_tcp_status, freya_tcp_status, worker, [])]
          }}.
 
 %%%===================================================================

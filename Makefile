@@ -9,7 +9,7 @@ PLT_APPS = $(shell ls $(ERL_LIB_DIR) | grep -v interface | sed -e 's/-[0-9.]*//'
 DIALYZER_OPTS= -Wno_undefined_callbacks --fullpath
 CQLSH = cqlsh
 
-.PHONY: all build_plt compile configure console deps doc clean depclean distclean dialyze release telstart test test-console
+.PHONY: all build_plt compile configure console deps doc clean depclean distclean dialyze test test-console
 
 all: deps compile cassandra-freya kairosdb-ui
 
@@ -36,10 +36,6 @@ doc:
 
 clean:
 	$(REBAR) skip_deps=true clean
-
-stress: compile
-	@erlc -o ./stress ./stress/stress.erl
-	@$(ERL) -sname $(PROJECT) $(EPATH) -pa stress
 
 depclean:
 	$(REBAR) clean
@@ -92,3 +88,9 @@ ct-single:
 		-sasl sasl_error_logger false \
 	    -dir $(dir $(shell find . -name $(suite)_SUITE.erl)) -suite $(suite)_SUITE -case $(case)
 	@open ct_log/all_runs.html
+
+rel: all
+	@./rebar generate
+
+relclean:
+	@rm -rf rel/freya
