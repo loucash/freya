@@ -19,4 +19,4 @@
         (fun(asc)  -> ?SELECT_DATA_IN_RANGE_ASC;
             (desc) -> ?SELECT_DATA_IN_RANGE_DESC end)(Order)).
 
--define(SELECT_METRIC_NAMES,            select_from_string_index).
+-define(SELECT_STRING_INDEX,            select_from_string_index).

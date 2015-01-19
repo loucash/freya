@@ -66,8 +66,8 @@ statements() ->
      {?SELECT_DATA_IN_RANGE_DESC,
       <<"SELECT offset, value FROM data_points WHERE "
         "rowkey = ? AND offset >= ? AND offset <= ? ORDER BY offset DESC LIMIT ?;">>},
-     {?SELECT_METRIC_NAMES,
-      <<"SELECT value FROM string_index;">>}
+     {?SELECT_STRING_INDEX,
+      <<"SELECT value FROM string_index where type = ?;">>}
     ].
 
 -spec search(options()) -> {ok, list()} | {error, any()}.
@@ -90,8 +90,8 @@ metric_names() ->
 -spec metric_names(pool_name()) -> {ok, list()} | {error, any()}.
 metric_names(Pool) ->
     with_pool(Pool, fun(Client) ->
-                            erlcql_client:execute(Client, ?SELECT_METRIC_NAMES,
-                                                  [], [read_consistency()])
+                            erlcql_client:execute(Client, ?SELECT_STRING_INDEX,
+                                                  [?ROW_KEY_METRIC_NAMES], [read_consistency()])
                     end).
 
 %%%===================================================================
