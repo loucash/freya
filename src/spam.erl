@@ -14,8 +14,10 @@ p() ->
     {ok,C} = freya_tcp_client:start_link(),
     ok = freya_tcp_client:put_metric(C, <<"test">>, 255).
 
-
 spam(WrkCount, N) ->
+    spam(random, WrkCount, N).
+
+spam(MetricName, WrkCount, N) ->
     application:ensure_all_started(folsomite),
     application:ensure_all_started(quintana),
     application:load(freya),
@@ -33,7 +35,7 @@ spam(WrkCount, N) ->
     {D0,S0,_C0} = get_status(Reader),
 
     io:format("Workers spawned.~n"),
-    Metrics = [{metric(), random:uniform()} || _ <- lists:seq(1, N)],
+    Metrics = [{metric(MetricName), random:uniform()} || _ <- lists:seq(1, N)],
     io:format("Metrics generated.~n"),
     {Us, done} = timer:tc(fun() -> round_robin(Workers, Metrics) end),
     Time = Us * 0.000001,
@@ -78,16 +80,20 @@ get_status(Reader) ->
     {Drops, Saved, Connections}.
 
 round_robin(Wrks, Ms) ->
-    round_robin(Wrks, Ms, []).
+    TS = tic:now_to_epoch_msecs(),
+    round_robin(Wrks, Ms, [], TS).
 
-round_robin(_, [], _) ->
+round_robin(_, [], _, _) ->
     done;
-round_robin([], Ms, WrksDone) ->
-    round_robin(lists:reverse(WrksDone), Ms, []);
-round_robin([CurrentWrk|Wrks], [{M,V}|Ms], WrksDone) ->
-    ok = freya_tcp_client:put_metric(CurrentWrk, M, V),
-    round_robin(Wrks, Ms, [CurrentWrk|WrksDone]).
+round_robin([], Ms, WrksDone, TS) ->
+    round_robin(lists:reverse(WrksDone), Ms, [], TS);
+round_robin([CurrentWrk|Wrks], [{M,V}|Ms]=MX, WrksDone, TS) ->
+    ok = freya_tcp_client:put_metric(CurrentWrk, M, TS, V),
+    NewTS = TS - (timer:seconds(length(MX))),
+    round_robin(Wrks, Ms, [CurrentWrk|WrksDone], NewTS).
 
-
-metric() ->
-    iolist_to_binary(["metric", base64:encode(crypto:strong_rand_bytes(16))]).
+metric(random) ->
+    iolist_to_binary(["metric",
+                      base64:encode(crypto:strong_rand_bytes(random:uniform(16)))]);
+metric(Name) ->
+    Name.
