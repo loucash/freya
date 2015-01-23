@@ -35,8 +35,8 @@ keep_trying(Match, F, Sleep, Tries) ->
     end.
 
 keep_trying_receive(Match, Sleep, Tries) ->
-    keep_trying(Match, fun() -> receive Msg -> Msg after 0 -> error end end,
-                Sleep, Tries).
+    keep_trying(Match, fun() -> receive Msg -> Msg after Sleep -> error end end,
+                0, Tries).
 
 set_fixt_dir(Test, Config) ->
     case code:which(Test) of

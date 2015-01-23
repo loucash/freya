@@ -9,7 +9,8 @@ start() ->
     reltool_util:application_start(?APP).
 
 stop() ->
-    reltool_util:application_stop(?APP).
+    reltool_util:application_stop(?APP),
+    reltool_util:application_stop(folsom).
 
 get_env(Name) ->
     application:get_env(?APP, Name).

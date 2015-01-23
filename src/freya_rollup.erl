@@ -14,10 +14,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {
-          dispatch_table    :: ets:id(),
-          monitor = []      :: [{pid(), reference()}]
-         }).
+-record(state, {}).
 
 %%%===================================================================
 %%% API
@@ -46,33 +43,23 @@ create(Metric, Tags, Ts, Aggregate) ->
 %%%===================================================================
 
 init([]) ->
-    DTid = ets:new(?MODULE, [named_table, public, {read_concurrency, true}]),
-    {ok, #state{dispatch_table=DTid}}.
+    {ok, #state{}}.
 
-handle_call({create, Metric, Tags, Ts, Aggregate}, _From,
-            #state{monitor=Monitors}=State) ->
+handle_call({create, Metric, Tags, Ts, Aggregate}, _From, State) ->
     Key = freya_utils:aggregate_key(Metric, Tags, Ts, Aggregate),
     case find_worker_process(Key) of
         {ok, _} = Ok ->
             {reply, Ok, State};
         {error, not_found} ->
             {ok, Pid} = freya_rollup_sup:start_child([Metric, Tags, Ts, Aggregate]),
-            ets:insert(?MODULE, {Key, Pid}),
-            MRef = monitor(process, Pid),
-            {reply, {ok, Pid}, State#state{monitor=[{Pid, MRef}|Monitors]}}
+            ok = pg2:create(Key),
+            ok = pg2:join(Key, Pid),
+            {reply, {ok, Pid}, State}
     end.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({'DOWN', MRef, _, _, _}, #state{monitor=Monitors}=State) ->
-    case lists:keyfind(MRef,2,Monitors) of
-        false ->
-            {noreply, State};
-        {Pid, _} = Found ->
-            true = ets:match_delete(?MODULE, {'_', Pid}),
-            {noreply, State#state{monitor = Monitors -- [Found]}}
-    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -86,9 +73,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 find_worker_process(Key) ->
-    case ets:lookup(?MODULE, Key) of
-        [{_, Pid}] ->
-            {ok, Pid};
+    case pg2:get_local_members(Key) of
         [] ->
+            {error, not_found};
+        [Pid] ->
+            {ok, Pid};
+        {error, {no_such_group, _}} ->
             {error, not_found}
     end.

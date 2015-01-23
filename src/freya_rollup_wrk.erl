@@ -71,12 +71,11 @@ active(emit, #state{metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate}=State)
             {next_state, active, State#state{timer=Ref}}
     end.
 
-handle_event(_Event, StateName, State) ->
-    {next_state, StateName, State}.
+handle_event(_Event, _StateName, State) ->
+    {stop, badarg, State}.
 
-handle_sync_event(_Event, _From, StateName, State) ->
-    Reply = ok,
-    {reply, Reply, StateName, State}.
+handle_sync_event(_Event, _From, _StateName, State) ->
+    {stop, badarg, State}.
 
 handle_info(Info, StateName, State) ->
     ?MODULE:StateName(Info, State).
@@ -93,5 +92,5 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 accumulate(#state{aggregator_funs={Accumulate, _}, aggregator_st=AggrSt}=State, Value) ->
     State#state{aggregator_st=Accumulate(Value, AggrSt)}.
 
-emit(#state{aggregator_funs={_, Emit}, aggregator_st=AggrSt}) ->
-    Emit(AggrSt).
+emit(#state{aggregator_st=AggrSt}) ->
+    AggrSt.

@@ -1,8 +1,6 @@
 {application, freya, [
  {description, "Fast distributed scalable time series database written primarily for Cassandra"},
  {vsn, "0.1.0"},
- {applications, [stdlib, kernel, lager, ranch, erlcql_cluster, eqm, poolboy,
-                 tic, kvlists, msgpack, quintana, folsomite, cowboy, jsx]},
  {registered, []},
  {applications, [stdlib,
                  kernel,
@@ -16,7 +14,9 @@
                  msgpack,
                  quintana,
                  folsomite,
-                 riak_core]},
+                 riak_core,
+                 cowboy,
+                 jsx]},
  {mod, {freya_app, []}},
  {env, [
     {writers_size, 1000},

@@ -29,11 +29,11 @@ all() ->
 
 init_per_suite(Config) ->
     ?th:setup_env(),
-    freya:start(),
+    ok = freya:start(),
     Config.
 
 end_per_suite(_Config) ->
-    freya:stop(),
+    ok = freya:stop(),
     ok.
 
 t_edge_sum(_Config) ->
@@ -84,7 +84,7 @@ t_edge_avg(_Config) ->
     freya_rollup:push(Metric, Tags, Ts+1, 2, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+2, 3, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+3, 4, Aggregate),
-    ?th:keep_trying_receive({push, Metric, Tags, Ts, 2.5, Aggregate}, 200, 10),
+    ?th:keep_trying_receive({push, Metric, Tags, Ts, {2.5, 4}, Aggregate}, 200, 10),
     unload_vnode_push(),
     ok.
 

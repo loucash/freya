@@ -63,7 +63,7 @@ init_per_suite(Config) ->
 
 end_per_suite(_Config) ->
     kai:stop(),
-    freya:stop(),
+    ok = freya:stop(),
     ok.
 
 t_write_read_data_point(_Config) ->
