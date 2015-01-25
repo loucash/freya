@@ -15,7 +15,24 @@ start(_StartType, _StartArgs) ->
     ok = start_cass_writers_pool(Publisher),
     ok = freya_tcp:start(Publisher),
     ok = freya_rest:start(),
-    freya_sup:start_link().
+    case freya_sup:start_link() of
+        {ok, Pid} ->
+            ok = riak_core:register([{vnode_module, freya_vnode}]),
+            ok = riak_core_node_watcher:service_up(freya, self()),
+
+            ok = riak_core:register([{vnode_module, freya_stats_vnode}]),
+            ok = riak_core_node_watcher:service_up(freya_stats, self()),
+
+            ok = riak_core_ring_events:add_guarded_handler(
+                   freya_ring_event_handler, []),
+
+            ok = riak_core_node_watcher_events:add_guarded_handler(
+                   freya_node_event_handler, []),
+
+            {ok, Pid};
+        {error, _} = Error ->
+            Error
+    end.
 
 stop(_State) ->
     ok.

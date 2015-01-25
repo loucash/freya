@@ -89,7 +89,8 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({mail, _, Queries0, _}, #state{write_delay=WriteDelay}=State) ->
+handle_info({mail, _, Queries0, _}, #state{write_delay=WriteDelay,
+                                           subscriber=Subscriber}=State) ->
     T = quintana:begin_timed(?Q_WRITER_BATCH),
     Queries = lists:flatten(Queries0),
     {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(?CS_WRITE_POOL),
@@ -106,6 +107,7 @@ handle_info({mail, _, Queries0, _}, #state{write_delay=WriteDelay}=State) ->
     end,
     erlcql_cluster:checkin(Resource),
     Timer = erlang:send_after(WriteDelay, self(), flush_buffer_timeout),
+    eqm_sub:notify_full(Subscriber),
     quintana:notify_timed(T),
     {noreply, State#state{timer=Timer}};
 handle_info({mail, _, buffer_full}, #state{timer=TimerRef,

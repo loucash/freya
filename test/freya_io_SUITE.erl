@@ -56,13 +56,14 @@ init_per_suite(Config) ->
     application:set_env(kai, rest_api_port, 8080),
     application:set_env(kai, telnet_connections, 0),
     kai:start(),
+    ?th:setup_env(),
     freya:start(),
     Config2 = ?th:set_fixt_dir(?MODULE, Config),
     Config2.
 
 end_per_suite(_Config) ->
     kai:stop(),
-    freya:stop(),
+    ok = freya:stop(),
     ok.
 
 t_write_read_data_point(_Config) ->
