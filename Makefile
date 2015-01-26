@@ -11,7 +11,7 @@ CQLSH = cqlsh
 
 .PHONY: all build_plt compile configure console deps doc clean depclean distclean dialyze test test-console
 
-all: deps compile cassandra-freya kairosdb-ui
+all: deps compile data/ring cassandra-freya kairosdb-ui
 
 build_plt:
 	@dialyzer --build_plt --apps $(PLT_APPS)
@@ -25,7 +25,7 @@ compile-fast:
 configure:
 	$(REBAR) get-deps compile
 
-console:
+console: data/ring
 	$(ERL) -sname $(PROJECT) $(EPATH) -config riak_core
 
 deps:
@@ -78,6 +78,10 @@ kairosdb-ui: priv/ui
 priv/ui:
 	@cd priv && curl -O http://mtod.org/ui.tar.gz && tar xzfv ui.tar.gz
 
+data/ring:
+	@rm -rf data/ring
+	@mkdir -p data/ring
+
 ct-single:
 	@mkdir -p ct_log
 	@if [ -z "$(suite)" ] || [ -z "$(case)" ]; then \
@@ -94,3 +98,12 @@ rel: all
 
 relclean:
 	@rm -rf rel/freya
+
+devrel: all dev1 dev2 dev3 dev4
+
+dev1 dev2 dev3 dev4:
+	mkdir -p dev
+	(cd rel && ../rebar generate target_dir=../dev/$@ overlay_vars=vars/$@.config)
+
+devclean:
+	rm -rf dev
