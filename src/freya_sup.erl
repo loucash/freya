@@ -30,8 +30,11 @@ init([]) ->
     PushFSM = {freya_push_fsm_sup,
                {freya_push_fsm_sup, start_link, []},
                permanent, infinity, supervisor, [freya_push_fsm_sup]},
+    GetFSM = {freya_get_fsm_sup,
+               {freya_get_fsm_sup, start_link, []},
+               permanent, infinity, supervisor, [freya_get_fsm_sup]},
     {ok, {{one_for_one, 5, 10},
-          [VMaster, Stats, PushFSM,
+          [VMaster, Stats, PushFSM, GetFSM,
            ?CHILD(freya_tcp_status, freya_tcp_status, worker, []),
            ?CHILD(freya_rollup_topsup, freya_rollup_topsup, supervisor, [])
           ]
