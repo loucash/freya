@@ -123,6 +123,10 @@ aggregator_funs(sum) ->
     {fun(X, undefined) -> X;
         (X, Acc) -> X + Acc end,
      fun(X) -> X end};
+aggregator_funs(count) ->
+    {fun(undefined) -> 1;
+        (X) -> X + 1 end,
+     fun(X) -> X end};
 aggregator_funs(avg) ->
     {fun(X, undefined) -> {X, 1};
         (X, {Avg0, N0}) ->

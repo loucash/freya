@@ -2,7 +2,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([push/2]).
+-export([push/3]).
 -export([start_link/4]).
 
 %% states
@@ -22,8 +22,8 @@
           tags,
           ts,
           aggregate,
-          aggregator_funs,
-          aggregator_st,
+          aggregator_fun,
+          aggregator_st = [],
           timer
          }).
 
@@ -39,27 +39,26 @@
 start_link(Metric, Tags, Ts, Aggregate) ->
     gen_fsm:start_link(?MODULE, [Metric, Tags, Ts, Aggregate], []).
 
-push(Pid, Value) ->
-    gen_fsm:send_event(Pid, {push, Value}).
+push(Pid, Ts, Value) ->
+    gen_fsm:send_event(Pid, {push, Ts, Value}).
 
 %%%===================================================================
 %%% gen_fsm callbacks
 %%%===================================================================
 init([Metric, Tags, Ts, {Fun, Precision}]) ->
-    AggregatorFuns = freya_utils:aggregator_funs(Fun),
     State = #state{metric=Metric, tags=Tags, ts=Ts,
                    aggregate={Fun, Precision},
-                   aggregator_funs=AggregatorFuns},
+                   aggregator_fun=aggregator(Fun)},
     {ok, inactive, State, ?SHUTDOWN_TIMEOUT}.
 
-inactive({push, Value}, State) ->
+inactive({push, _, _}=Msg, State) ->
     Ref = erlang:send_after(?EMIT_INTERVAL, self(), emit),
-    {next_state, active, accumulate(State#state{timer=Ref}, Value)};
+    {next_state, active, accumulate(Msg, State#state{timer=Ref})};
 inactive(timeout, State) ->
     {stop, normal, State}.
 
-active({push, Value}, State) ->
-    {next_state, active, accumulate(State, Value)};
+active({push, _, _}=Msg, State) ->
+    {next_state, active, accumulate(Msg, State)};
 active(emit, #state{metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate}=State) ->
     Result = freya_push_fsm:push(Metric, Tags, Ts, emit(State), Aggregate),
     case Result of
@@ -89,8 +88,24 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-accumulate(#state{aggregator_funs={Accumulate, _}, aggregator_st=AggrSt}=State, Value) ->
-    State#state{aggregator_st=Accumulate(Value, AggrSt)}.
+accumulate(Msg, #state{aggregator_st=AggrSt, aggregator_fun=AggrFun}=State) ->
+    State#state{aggregator_st=AggrFun(Msg, AggrSt)}.
 
-emit(#state{aggregator_st=AggrSt}) ->
-    AggrSt.
+emit(#state{aggregator_st=AggrSt, aggregator_fun=AggrFun}) ->
+    AggrFun(emit, AggrSt).
+
+aggregator(Fun) ->
+    {Accumulate, Emit} = freya_utils:aggregator_funs(Fun),
+    {Count, EmitCount} = freya_utils:aggregator_funs(count),
+    {Max, EmitMax}     = freya_utils:aggregator_funs(max),
+    Get                = fun proplists:get_value/2,
+    fun({push, Ts, Value}, AggrSt) when is_list(AggrSt) ->
+            [{Fun,      Accumulate(Value, Get(Fun,    AggrSt))},
+             {points,   Count(            Get(points, AggrSt))},
+             {max_ts,   Max(Ts,           Get(max_ts, AggrSt))}];
+       (emit, []) -> [];
+       (emit, AggrSt) ->
+            [{Fun,      Emit(       Get(Fun,    AggrSt))},
+             {points,   EmitCount(  Get(points, AggrSt))},
+             {max_ts,   EmitMax(    Get(max_ts, AggrSt))}]
+    end.
