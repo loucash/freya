@@ -1,7 +1,12 @@
 -module(freya_stats_vnode).
 -behaviour(riak_core_vnode).
 
--export([push/7]).
+-include("freya_object.hrl").
+-include_lib("riak_core/include/riak_core_vnode.hrl").
+
+-export([push/7,
+         get/3,
+         repair/3]).
 
 -export([start_vnode/1,
          init/1,
@@ -18,9 +23,10 @@
          handle_coverage/4,
          handle_exit/3]).
 
--record(state, {partition}).
+-record(state, {idx,
+                node,
+                stats}).
 
-%% API
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
@@ -30,15 +36,54 @@ push(PrefList, Identity, Metric, Tags, Ts, Value, Aggregate) ->
                                    {fsm, undefined, self()},
                                    freya_stats_vnode_master).
 
-init([Partition]) ->
-    {ok, #state { partition=Partition }}.
+get(PrefList, ReqId, Key) ->
+    riak_core_vnode_master:command(PrefList,
+                                   {get, ReqId, Key},
+                                   {fsm, undefined, self()},
+                                   freya_stats_vnode_master).
 
-handle_command({push, {ReqId, _Coordinator}, _Metric, _Tags, _Ts, _Value, _Aggregate}, _Sender, State) ->
-    % TODO: fill with love
-    {reply, {ok, ReqId}, State}.
+repair(IdxNode, Key, Obj) ->
+    riak_core_vnode_master:command(IdxNode,
+                                   {repair, Key, Obj},
+                                   ignore,
+                                   freya_stats_vnode_master).
 
-handle_handoff_command(_Message, _Sender, State) ->
-    {noreply, State}.
+init([Index]) ->
+    {ok, #state { idx=Index, node=node(), stats=dict:new() }}.
+
+handle_command({push, {ReqId, Coordinator}, Metric, Tags, Ts, AggrSt, Aggregate},
+               _Sender, #state{stats=Stats0}=State) ->
+    Key = freya_utils:aggregate_key(Metric, Tags, Ts, Aggregate),
+    [{_, Value}, {points, Count}] = AggrSt,
+    Val = #val{value=Value, points=Count},
+    Obj = case dict:find(Key, Stats0) of
+              {ok, Obj0} ->
+                  freya_object:update(Coordinator, Val, Obj0);
+              error ->
+                  freya_object:new(Coordinator, Metric, Tags, Ts, Aggregate, Val)
+          end,
+    Stats = dict:store(Key, Obj, Stats0),
+    % TODO: store to persistent store
+    {reply, {ok, ReqId}, State#state{stats=Stats}};
+
+handle_command({get, ReqId, Key}, _Sender,
+               #state{stats=Stats, idx=Index, node=Node}=State) ->
+    Reply = case dict:find(Key, Stats) of
+                error ->
+                    not_found;
+                {ok, Obj} ->
+                    Obj
+            end,
+    {reply, {ok, ReqId, {Index, Node}, Reply}, State};
+
+handle_command({repair, Key, Obj}, _Sender, #state{stats=Stats0}=State) ->
+    Stats = dict:store(Key, Obj, Stats0),
+    {noreply, State#state{stats=Stats}}.
+
+
+handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender, State) ->
+    Acc = dict:fold(Fun, Acc0, State#state.stats),
+    {reply, Acc, State}.
 
 handoff_starting(_TargetNode, State) ->
     {true, State}.
@@ -49,14 +94,24 @@ handoff_cancelled(State) ->
 handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
-handle_handoff_data(_Data, State) ->
-    {reply, ok, State}.
+handle_handoff_data(Data, #state{stats=Stats0}=State) ->
+    {StatName, Obj1} = binary_to_term(Data),
+    Obj =
+        case dict:find(StatName, Stats0) of
+            {ok, Obj2} -> freya_object:merge([Obj1,Obj2]);
+            error -> Obj1
+        end,
+    Stats = dict:store(StatName, Obj, Stats0),
+    {reply, ok, State#state{stats=Stats}}.
 
-encode_handoff_item(_ObjectName, _ObjectValue) ->
-    <<>>.
+encode_handoff_item(Key, Obj) ->
+    term_to_binary(Key, Obj).
 
 is_empty(State) ->
-    {true, State}.
+    case dict:size(State#state.stats) of
+        0 -> {true, State};
+        _ -> {false, State}
+    end.
 
 delete(State) ->
     {ok, State}.

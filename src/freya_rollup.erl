@@ -91,7 +91,7 @@ do_push(Metric, Tags, Ts, Value, {_Fun, Precision}=Aggregate) ->
                     {error, not_found} ->
                         create(Metric, SanitizedTags, AlignedTs, Aggregate)
                 end,
-    freya_rollup_wrk:push(Pid, Ts, Value).
+    freya_rollup_wrk:push(Pid, Value).
 
 find_worker_process(Key) ->
     case pg2:get_local_members(Key) of
