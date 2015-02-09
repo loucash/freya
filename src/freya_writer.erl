@@ -1,8 +1,3 @@
-%%%-------------------------------------------------------------------
-%%% @doc
-%%% Worker responsible for batch insert of data points into cassandra
-%%% @end
-%%%-------------------------------------------------------------------
 -module(freya_writer).
 -behaviour(gen_server).
 
@@ -14,6 +9,7 @@
 -export([start_link/1]).
 -export([statements/0]).
 -export([save/2, save/3]).
+-export([publisher/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -31,9 +27,6 @@
 
 -type save_options() :: [{ttl, ttl()} | {aggregate, data_precision()}].
 
-%%%===================================================================
-%%% API
-%%%===================================================================
 statements() ->
     [
      {?INSERT_DATA_POINT_TTL,
@@ -71,9 +64,10 @@ save(Publisher, DataPoint, Opts) ->
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
-%%%===================================================================
-%%% gen_server callbacks
-%%%===================================================================
+-spec publisher() ->
+    {ok, eqm:pub()}.
+publisher() ->
+    eqm:publisher_info(?CS_WRITERS_PUB).
 
 init(Publisher) ->
     {ok, BatchSize} = freya:get_env(write_batch_size),

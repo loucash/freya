@@ -58,7 +58,7 @@ end_per_suite(_Config) ->
     ok = freya:stop().
 
 t_write_read_data_point(_Config) ->
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"test_write_read_data_point">>),
     Ts = tic:now_to_epoch_msecs(),
     DPIn = freya_data_point:new(MetricName, Ts, 1),
@@ -69,7 +69,7 @@ t_write_read_data_point(_Config) ->
                                   end, 100, 200).
 
 t_write_read_aggregate(_Config) ->
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"t_write_read_aggregate">>),
     Ts = tic:now_to_epoch_msecs(),
     DPIn = freya_data_point:new(MetricName, Ts, 1),
@@ -82,7 +82,7 @@ t_write_read_aggregate(_Config) ->
                     end, 100, 200).
 
 t_write_read_aggregate_with_ttl(_Config) ->
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"t_write_read_aggregate_with_ttl">>),
     Ts = tic:now_to_epoch_msecs(),
     DPIn = freya_data_point:new(MetricName, Ts, 1),
@@ -102,7 +102,7 @@ t_write_read_aggregate_with_ttl(_Config) ->
                     end, 100, 200).
 
 t_write_read_different_rows(_Config) ->
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"test_write_read_different_rows">>),
     RowWidth    = freya_utils:row_width(raw),
     RowWidthMs  = freya_utils:ms(RowWidth),
@@ -120,7 +120,7 @@ t_write_read_different_rows(_Config) ->
 t_read_row_size(_Config) ->
     meck:new(freya_reader, [passthrough]),
     meck:expect(freya_reader, read_row_size, fun() -> 2 end),
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"test_read_row_size">>),
     Ts = tic:now_to_epoch_msecs(),
     DPIn1 = freya_data_point:new(MetricName, Ts+1, 1),
@@ -141,7 +141,7 @@ t_read_row_size(_Config) ->
 t_read_row_size_and_desc(_Config) ->
     meck:new(freya_reader, [passthrough]),
     meck:expect(freya_reader, read_row_size, fun() -> 2 end),
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"test_read_row_size">>),
     Ts = tic:now_to_epoch_msecs(),
     DPIn1 = freya_data_point:new(MetricName, Ts+1, 1),
@@ -161,7 +161,7 @@ t_read_row_size_and_desc(_Config) ->
     ok.
 
 t_start_end_time(_Config) ->
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"test_start_end_time">>),
     Ts = tic:now_to_epoch_msecs(),
     DPIn1 = freya_data_point:new(MetricName, Ts, 1),
@@ -179,7 +179,7 @@ t_start_end_time(_Config) ->
                     end, 100, 200).
 
 t_start_end_time_different_rowkeys(_Config) ->
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"test_start_end_time">>),
     RowWidth    = freya_utils:row_width(raw),
     Ts1 = freya_utils:floor(tic:now_to_epoch_msecs(), RowWidth),
@@ -195,7 +195,7 @@ t_start_end_time_different_rowkeys(_Config) ->
                     end, 100, 200).
 
 t_filter_tags_1(_Config) ->
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName = ?th:randomize(<<"test_filter_tags_1">>),
     Ts = tic:now_to_epoch_msecs(),
     DPIn1 = freya_data_point:new(MetricName, Ts, 1, [{<<"foo">>, <<"bar">>}]),
@@ -210,7 +210,7 @@ t_filter_tags_1(_Config) ->
                     end, 100, 200).
 
 t_filter_tags_2(_Config) ->
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName = ?th:randomize(<<"test_filter_tags_2">>),
     Ts = tic:now_to_epoch_msecs(),
     DPIn = freya_data_point:new(MetricName, Ts, 1,
@@ -226,7 +226,7 @@ t_filter_tags_2(_Config) ->
 t_sum_aggregate(_Config) ->
     meck:new(freya_reader, [passthrough]),
     meck:expect(freya_reader, read_row_size, fun() -> 2 end),
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"t_sum_aggregate">>),
     Ts = freya_utils:floor(tic:now_to_epoch_msecs(), {1, seconds}),
     DPIn1 = freya_data_point:new(MetricName, Ts+1, 1),
@@ -249,7 +249,7 @@ t_sum_aggregate(_Config) ->
 t_sum_aggregate_aligned(_Config) ->
     meck:new(freya_reader, [passthrough]),
     meck:expect(freya_reader, read_row_size, fun() -> 2 end),
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"t_sum_aggregate_aligned">>),
     Ts = freya_utils:floor(tic:now_to_epoch_msecs(), {1, seconds}),
     DPIn1 = freya_data_point:new(MetricName, Ts+1, 1),
@@ -273,7 +273,7 @@ t_sum_aggregate_aligned(_Config) ->
 t_sum_aggregate_aligned_different_types(_Config) ->
     meck:new(freya_reader, [passthrough]),
     meck:expect(freya_reader, read_row_size, fun() -> 2 end),
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"t_sum_aggregate_aligned_different_types">>),
     Ts = freya_utils:floor(tic:now_to_epoch_msecs(), {1, seconds}),
     DPIn1 = freya_data_point:new(MetricName, Ts+1, 1),
@@ -309,7 +309,7 @@ t_sum_aggregate_aligned_different_types(_Config) ->
 t_avg_aggregate(_Config) ->
     meck:new(freya_reader, [passthrough]),
     meck:expect(freya_reader, read_row_size, fun() -> 2 end),
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"t_avg_aggregate">>),
     Ts = freya_utils:floor(tic:now_to_epoch_msecs(), {1, seconds}),
     DPIn1 = freya_data_point:new(MetricName, Ts+1, 1),
@@ -333,7 +333,7 @@ t_avg_aggregate(_Config) ->
 t_avg_aggregate_aligned(_Config) ->
     meck:new(freya_reader, [passthrough]),
     meck:expect(freya_reader, read_row_size, fun() -> 2 end),
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"t_avg_aggregate_aligned">>),
     Ts = freya_utils:floor(tic:now_to_epoch_msecs(), {1, seconds}),
     DPIn1 = freya_data_point:new(MetricName, Ts+1, 1),
@@ -356,7 +356,7 @@ t_avg_aggregate_aligned(_Config) ->
     meck:unload().
 
 t_list_namespaces(_Config) ->
-    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    {ok, Publisher} = freya_writer:publisher(),
     Metric = ?th:randomize(<<"dummy">>),
     Ns = ?th:randomize(<<"ns">>),
     Ts = tic:now_to_epoch_msecs(),
