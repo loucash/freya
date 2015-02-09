@@ -3,15 +3,14 @@
 -export([start/0]).
 
 -define(DEFAULT_PORT, 8080).
+-define(PFX, "/api/v1/").
 
 start() ->
-    MetricsNames = {"/api/v1/metricnames", freya_rest_metrics, []},
-    MetricsQuery = {"/api/v1/datapoints/query", freya_rest_dps, []},
-    UI = {"/[...]", cowboy_static, {priv_dir, freya, "ui", [{mimetypes, cow_mimetypes, all}]}},
-    Dispatch = cowboy_router:compile([ {'_', [MetricsNames,
-                                              MetricsQuery,
-                                              UI]
-                                       } ]),
+    Routes = [{?PFX++"/metrics/ns", freya_rest_ns, []},
+              {?PFX++"/metrics/ns/:ns", freya_rest_names, []},
+              {?PFX++"/metrics/ns/:ns/:metric_name", freya_rest_dps, []}],
+
+    Dispatch = cowboy_router:compile([ {'_', Routes} ]),
     Port = freya:get_env(rest_port, ?DEFAULT_PORT),
     {ok, _} = cowboy:start_http(http, 100,
                                 [{port, Port}], [ {env, [{dispatch, Dispatch}]}
