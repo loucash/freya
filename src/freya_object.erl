@@ -10,14 +10,16 @@
 %%% API
 %%%===================================================================
 
-new(Coordinator, Metric, Tags, Ts, {Fun, Precision}, Val) ->
+new(Coordinator, Metric, Tags, Ts, {Fun, Precision}=Aggregate, Val) ->
     VC0 = vclock:fresh(),
     VC = vclock:increment(Coordinator, VC0),
-    #freya_object{vclock=VC, metric=Metric, tags=Tags, ts=Ts,
+    Key = freya_utils:aggregate_key(Metric, Tags, Ts, Aggregate),
+    #freya_object{key=Key, metric=Metric, tags=Tags, ts=Ts,
                   fn=Fun, precision=Precision,
-                  values=dict:from_list([{Coordinator, Val}])}.
+                  values=dict:from_list([{Coordinator, Val}]),
+                  vnode_vclock=VC}.
 
-update(Coordinator, Val0, #freya_object{fn=Fun, vclock=VC0, values=Values0}=Obj) ->
+update(Coordinator, Val0, #freya_object{fn=Fun, vnode_vclock=VC0, values=Values0}=Obj) ->
     Val = case dict:find(Coordinator, Values0) of
               {ok, #val{}=Val1} ->
                   merge_values(Fun, Val0, Val1);
@@ -26,7 +28,7 @@ update(Coordinator, Val0, #freya_object{fn=Fun, vclock=VC0, values=Values0}=Obj)
           end,
     VC = vclock:increment(Coordinator, VC0),
     Values = dict:store(Coordinator, Val, Values0),
-    Obj#freya_object{values=Values, vclock=VC}.
+    Obj#freya_object{values=Values, vnode_vclock=VC}.
 
 merge([not_found|_]=Objs) ->
     P = fun(X) -> X =:= not_found end,
@@ -42,8 +44,8 @@ merge([#freya_object{}=Obj|_]=Objs) ->
             Child;
         Children ->
             Values   = reconcile(   lists:map(fun values/1, Children)),
-            MergedVC = vclock:merge(lists:map(fun vclock/1, Children)),
-            Obj#freya_object{values=Values, vclock=MergedVC}
+            MergedVC = vclock:merge(lists:map(fun vnode_vclock/1, Children)),
+            Obj#freya_object{values=Values, vnode_vclock=MergedVC}
     end.
 
 value(#freya_object{fn=Fn, values=Pairs0}) ->
@@ -60,7 +62,7 @@ value(not_found) ->
 needs_repair(Obj, Objs) ->
     lists:any(different(Obj), Objs).
 
-equal(#freya_object{vclock=VC1}, #freya_object{vclock=VC2}) ->
+equal(#freya_object{vnode_vclock=VC1}, #freya_object{vnode_vclock=VC2}) ->
     vclock:equal(VC1, VC2);
 equal(not_found, not_found) -> true;
 equal(_, _) -> false.
@@ -84,7 +86,7 @@ merge_values(min, #val{value=S0, points=C0}, #val{value=S1, points=C1}) when S0 
 merge_values(min, #val{value=S0, points=C0}, #val{value=S1, points=C1}) when S0 > S1 ->
     #val{value=S1, points=C0+C1}.
 
-vclock(#freya_object{vclock=VC}) ->
+vnode_vclock(#freya_object{vnode_vclock=VC}) ->
     VC.
 
 values(#freya_object{values=Values}) ->
@@ -111,8 +113,8 @@ different(Obj1) ->
 
 ancestors(Objs0) ->
     Objs = lists:filter(fun(Obj) -> Obj =/= not_found end, Objs0),
-    As = [ [Obj2 || Obj2 <- Objs, ancestor(Obj2#freya_object.vclock,
-                                           Obj1#freya_object.vclock)]
+    As = [ [Obj2 || Obj2 <- Objs, ancestor(Obj2#freya_object.vnode_vclock,
+                                           Obj1#freya_object.vnode_vclock)]
            || Obj1 <- Objs],
     unique(lists:flatten(As)).
 

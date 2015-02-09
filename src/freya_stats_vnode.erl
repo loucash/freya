@@ -24,8 +24,10 @@
          handle_exit/3]).
 
 -record(state, {idx,
-                node,
-                stats}).
+                node        :: node(),
+                stats_table :: ets:tid()}).
+
+-define(TNAME(P), list_to_atom("freya_stats_"++integer_to_list(P)++"_t")).
 
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
@@ -49,41 +51,50 @@ repair(IdxNode, Key, Obj) ->
                                    freya_stats_vnode_master).
 
 init([Index]) ->
-    {ok, #state { idx=Index, node=node(), stats=dict:new() }}.
+    StatsTid = ets:new(?TNAME(Index), [{keypos, #freya_object.key}]),
+    {ok, #state { idx=Index, node=node(), stats_table=StatsTid }}.
 
 handle_command({push, {ReqId, Coordinator}, Metric, Tags, Ts, AggrSt, Aggregate},
-               _Sender, #state{stats=Stats0}=State) ->
+               _Sender, #state{stats_table=StatsTid}=State) ->
     Key = freya_utils:aggregate_key(Metric, Tags, Ts, Aggregate),
     [{_, Value}, {points, Count}] = AggrSt,
     Val = #val{value=Value, points=Count},
-    Obj = case dict:find(Key, Stats0) of
+    Obj = case stats_find(Key, StatsTid) of
               {ok, Obj0} ->
                   freya_object:update(Coordinator, Val, Obj0);
-              error ->
+              {error, not_found} ->
                   freya_object:new(Coordinator, Metric, Tags, Ts, Aggregate, Val)
           end,
-    Stats = dict:store(Key, Obj, Stats0),
+    ok = stats_store(Obj, StatsTid),
     % TODO: store to persistent store
-    {reply, {ok, ReqId}, State#state{stats=Stats}};
+    {reply, {ok, ReqId}, State};
 
 handle_command({get, ReqId, Key}, _Sender,
-               #state{stats=Stats, idx=Index, node=Node}=State) ->
-    Reply = case dict:find(Key, Stats) of
-                error ->
-                    not_found;
+               #state{stats_table=StatsTid, idx=Index, node=Node}=State) ->
+    Reply = case stats_find(Key, StatsTid) of
                 {ok, Obj} ->
-                    Obj
+                    Obj;
+                {error, not_found} ->
+                    not_found
             end,
     {reply, {ok, ReqId, {Index, Node}, Reply}, State};
 
-handle_command({repair, Key, Obj}, _Sender, #state{stats=Stats0}=State) ->
-    Stats = dict:store(Key, Obj, Stats0),
-    {noreply, State#state{stats=Stats}}.
+handle_command({repair, Key, Obj0}, _Sender, #state{stats_table=StatsTid}=State) ->
+    Obj = case stats_find(Key, StatsTid) of
+              {ok, Obj1} ->
+                  freya_object:merge([Obj0, Obj1]);
+              {error, not_found} ->
+                  Obj0
+          end,
+    ok = stats_store(Obj, StatsTid),
+    {noreply, State}.
 
-
-handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender, State) ->
-    Acc = dict:fold(Fun, Acc0, State#state.stats),
-    {reply, Acc, State}.
+handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
+                       #state{stats_table=StatsTid}=State) ->
+    Acc1 = ets:foldl(fun(#freya_object{}=Obj, Acc) ->
+                             Fun(Obj#freya_object.key, Obj, Acc)
+                     end, Acc0, StatsTid),
+    {reply, Acc1, State}.
 
 handoff_starting(_TargetNode, State) ->
     {true, State}.
@@ -94,21 +105,22 @@ handoff_cancelled(State) ->
 handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
-handle_handoff_data(Data, #state{stats=Stats0}=State) ->
-    {StatName, Obj1} = binary_to_term(Data),
-    Obj =
-        case dict:find(StatName, Stats0) of
-            {ok, Obj2} -> freya_object:merge([Obj1,Obj2]);
-            error -> Obj1
-        end,
-    Stats = dict:store(StatName, Obj, Stats0),
-    {reply, ok, State#state{stats=Stats}}.
+handle_handoff_data(Data, #state{stats_table=StatsTid}=State) ->
+    {Key, Obj0} = binary_to_term(Data),
+    Obj = case stats_find(Key, StatsTid) of
+              {ok, Obj1} ->
+                  freya_object:merge([Obj0, Obj1]);
+              {error, not_found} ->
+                  Obj0
+          end,
+    ok = stats_store(Obj, StatsTid),
+    {reply, ok, State}.
 
 encode_handoff_item(Key, Obj) ->
     term_to_binary(Key, Obj).
 
-is_empty(State) ->
-    case dict:size(State#state.stats) of
+is_empty(#state{stats_table=StatsTid}=State) ->
+    case ets:info(StatsTid, size) of
         0 -> {true, State};
         _ -> {false, State}
     end.
@@ -123,4 +135,19 @@ handle_exit(_Pid, _Reason, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
+    ok.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+stats_find(Key, StatsTid) ->
+    case ets:lookup(StatsTid, Key) of
+        [#freya_object{}=Obj] ->
+            {ok, Obj};
+        [] ->
+            {error, not_found}
+    end.
+
+stats_store(Obj, StatsTid) ->
+    true = ets:insert(StatsTid, Obj),
     ok.
