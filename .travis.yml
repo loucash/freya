@@ -1,0 +1,11 @@
+language: erlang
+script: make all && make test
+otp_release:
+    - R16B02
+services:
+    - cassandra
+
+cache:
+  apt: true
+  directories:
+    - deps
