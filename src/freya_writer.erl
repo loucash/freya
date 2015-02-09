@@ -139,12 +139,14 @@ consistency() ->
 
 -spec save_data_point_queries(data_point(), ttl(), data_precision()) -> list().
 save_data_point_queries(DP, TTL, DataPrecision) ->
+    Ns   = freya_data_point:ns(DP),
     Name = freya_data_point:name(DP),
     Tags = freya_data_point:tags(DP),
     {ok, {RowKey, Offset, Value}} = freya_data_point:encode(DP, DataPrecision),
     [insert_data_point(RowKey, Offset, Value, TTL),
      insert_row_index(Name, RowKey, TTL, DataPrecision),
-     insert_string_index(?ROW_KEY_METRIC_NAMES, Name)]
+     insert_string_index(?ROW_KEY_METRIC_NAMES(Ns), Name),
+     insert_string_index(?ROW_KEY_NAMESPACES, Ns)]
     ++ lists:flatmap(
          fun({TagName, TagValues}) ->
             [insert_string_index(?ROW_KEY_TAG_NAMES, TagName)]

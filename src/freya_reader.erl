@@ -10,7 +10,8 @@
 
 -export([statements/0]).
 -export([search/1, search/2]).
--export([metric_names/0, metric_names/1]).
+-export([metric_names/1, metric_names/2]).
+-export([namespaces/0, namespaces/1]).
 
 % exported for tests
 -export([read_row_size/0]).
@@ -83,15 +84,30 @@ search(Pool, Options) when is_list(Options) ->
             Error
     end.
 
--spec metric_names() -> {ok, list()} | {error, any()}.
-metric_names() ->
-    metric_names(?CS_READ_POOL).
+-spec metric_names(metric_ns()) -> 
+    {ok, list(metric_ns())} 
+    | {error, any()}.
+metric_names(Ns) ->
+    metric_names(?CS_READ_POOL, Ns).
 
--spec metric_names(pool_name()) -> {ok, list()} | {error, any()}.
-metric_names(Pool) ->
+-spec metric_names(pool_name(), metric_ns()) -> 
+    {ok, list(metric_name())} 
+    | {error, any()}.
+metric_names(Pool, Ns) ->
     with_pool(Pool, fun(Client) ->
                             erlcql_client:execute(Client, ?SELECT_STRING_INDEX,
-                                                  [?ROW_KEY_METRIC_NAMES], [read_consistency()])
+                                                  [?ROW_KEY_METRIC_NAMES(Ns)], [read_consistency()])
+                    end).
+
+-spec namespaces() -> {ok, list()} | {error, any()}.
+namespaces() ->
+    namespaces(?CS_READ_POOL).
+
+-spec namespaces(pool_name()) -> {ok, list()} | {error, any()}.
+namespaces(Pool) ->
+    with_pool(Pool, fun(Client) ->
+                            erlcql_client:execute(Client, ?SELECT_STRING_INDEX,
+                                                  [?ROW_KEY_NAMESPACES], [read_consistency()])
                     end).
 
 %%%===================================================================

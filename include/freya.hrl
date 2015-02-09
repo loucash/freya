@@ -51,7 +51,7 @@
 -define(CS_WRITERS_PUB,     freya_writers_pub).
 
 % string index keys
--define(ROW_KEY_METRIC_NAMES,   <<"_metric_names">>).
--define(ROW_KEY_TAG_NAMES,      <<"_tag_names">>).
--define(ROW_KEY_TAG_VALUES,     <<"_tag_values">>).
--define(ROW_KEY_NAMESPACES,     <<"_namespaces">>).
+-define(ROW_KEY_METRIC_NAMES(Ns), <<"_ns_", Ns/binary>>).
+-define(ROW_KEY_TAG_NAMES,        <<"_tag_names">>).
+-define(ROW_KEY_TAG_VALUES,       <<"_tag_values">>).
+-define(ROW_KEY_NAMESPACES,       <<"_namespaces">>).
