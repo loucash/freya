@@ -15,7 +15,9 @@
          t_avg_aggregate/1,
          t_avg_aggregate_aligned/1,
          t_start_end_time/1,
-         t_start_end_time_different_rowkeys/1]).
+         t_start_end_time_different_rowkeys/1,
+         t_list_namespaces/1,
+         t_list_names/1]).
 
 -include_lib("freya/include/freya.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -41,7 +43,9 @@ all() ->
      t_sum_aggregate_aligned,
      t_sum_aggregate_aligned_different_types,
      t_avg_aggregate,
-     t_avg_aggregate_aligned
+     t_avg_aggregate_aligned,
+     t_list_namespaces,
+     t_list_names
     ].
 
 init_per_suite(Config) ->
@@ -363,3 +367,20 @@ t_avg_aggregate_aligned(_Config) ->
                                                  {align, true}])
                     end, 100, 200),
     meck:unload().
+
+t_list_namespaces(_Config) ->
+    {ok, Publisher} = eqm:publisher_info(?CS_WRITERS_PUB),
+    Metric = ?th:randomize(<<"dummy">>),
+    Ns = ?th:randomize(<<"ns">>),
+    Ts = tic:now_to_epoch_msecs(),
+    DPIn = freya_data_point:new({Ns,Metric}, Ts, 1),
+    ok = freya_writer:save(Publisher, DPIn),
+    ?th:keep_trying({ok, [DPIn]}, fun() ->
+                                          {ok, Nss} = freya_reader:namespaces(),
+                                          true = lists:member(Ns, Nss),
+                                          freya_reader:search(?CS_READ_POOL,
+                                                              [{metric_name, {Ns,Metric}},
+                                                               {start_time, Ts}])
+                                  end, 100, 200).
+
+t_list_names(_) -> ok.
