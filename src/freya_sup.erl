@@ -35,6 +35,7 @@ init([]) ->
                permanent, infinity, supervisor, [freya_get_fsm_sup]},
     {ok, {{one_for_one, 5, 10},
           [VMaster, Stats, PushFSM, GetFSM,
-           ?CHILD(freya_rollup_topsup, freya_rollup_topsup, supervisor, [])
+           ?CHILD(freya_rollup_topsup, freya_rollup_topsup, supervisor, []),
+           ?CHILD(freya_snapshot_topsup, freya_snapshot_topsup, supervisor, [])
           ]
          }}.

@@ -16,7 +16,8 @@
                  folsomite,
                  riak_core,
                  cowboy,
-                 jsx]},
+                 jsx,
+                 riak_governor]},
  {mod, {freya_app, []}},
  {env, [
     {writers_size, 1000},

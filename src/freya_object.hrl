@@ -9,8 +9,8 @@
 
          values     :: dict(),
 
-         vnode_vclock   :: vclock:vclock(),
-         cass_vclock    :: vclock:vclock()
+         vnode_vclock = vclock:fresh()  :: vclock:vclock(),
+         cass_vclock  = vclock:fresh()  :: vclock:vclock()
         }).
 
 -type freya_object()    :: #freya_object{}.

@@ -8,7 +8,7 @@
 %% API
 -export([start_link/1]).
 -export([statements/0]).
--export([save/2, save/3]).
+-export([save/2, save/3, save_data_point/2]).
 -export([publisher/0]).
 
 %% gen_server callbacks
@@ -61,6 +61,13 @@ save(Publisher, DataPoint, Opts) ->
     quintana:notify_timed(T),
     R.
 
+-spec save_data_point(data_point(), save_options()) -> ok | {error, any()}.
+save_data_point(DataPoint, Opts) ->
+    TTL = proplists:get_value(ttl, Opts, infinity),
+    DataPrecision = proplists:get_value(aggregate, Opts, raw),
+    Qrys = save_data_point_queries(DataPoint, TTL, DataPrecision),
+    batch(Qrys).
+
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
@@ -87,17 +94,7 @@ handle_info({mail, _, Queries0, _}, #state{write_delay=WriteDelay,
                                            subscriber=Subscriber}=State) ->
     T = quintana:begin_timed(?Q_WRITER_BATCH),
     Queries = lists:flatten(Queries0),
-    {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(?CS_WRITE_POOL),
-    Client = erlcql_cluster_worker:get_client(Worker),
-    Res = erlcql_client:batch(Client, Queries, [consistency()]),
-    case Res of
-        {ok, _} ->
-            ok;
-        {error, Reason} ->
-            lager:error("Error during batch save: ~p", [Reason]),
-            error
-    end,
-    erlcql_cluster:checkin(Resource),
+    batch(Queries),
     Timer = erlang:send_after(WriteDelay, self(), flush_buffer_timeout),
     eqm_sub:notify_full(Subscriber),
     quintana:notify_timed(T),
@@ -127,6 +124,19 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+batch(Queries) ->
+    {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(?CS_WRITE_POOL),
+    Client = erlcql_cluster_worker:get_client(Worker),
+    Res = erlcql_client:batch(Client, Queries, [consistency()]),
+    erlcql_cluster:checkin(Resource),
+    case Res of
+        {ok, _} ->
+            ok;
+        {error, Reason} = Error ->
+            lager:error("Error during batch save: ~p", [Reason]),
+            Error
+    end.
+
 consistency() ->
     A = freya:get_env(cassandra_write_consistency, quorum),
     {consistency, A}.

@@ -65,7 +65,7 @@ t_edge_sum(_Config) ->
     freya_rollup:push(Metric, Tags, Ts+1, 1, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+2, 1, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+3, 1, Aggregate),
-    AggrSt = [{sum, 4}, {points, 4}],
+    AggrSt = [{value, 4}, {points, 4}],
     ?th:keep_trying_receive({push, Metric, Tags, Ts, AggrSt, Aggregate}, 200, 10),
     unload_vnode_push(),
     ok.
@@ -79,7 +79,7 @@ t_edge_max(_Config) ->
     freya_rollup:push(Metric, Tags, Ts+1, 2, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+2, 3, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+3, 4, Aggregate),
-    AggrSt = [{max, 4}, {points, 4}],
+    AggrSt = [{value, 4}, {points, 4}],
     ?th:keep_trying_receive({push, Metric, Tags, Ts, AggrSt, Aggregate}, 200, 10),
     unload_vnode_push(),
     ok.
@@ -93,7 +93,7 @@ t_edge_min(_Config) ->
     freya_rollup:push(Metric, Tags, Ts+1, 2, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+2, 3, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+3, 4, Aggregate),
-    AggrSt = [{min, 1}, {points, 4}],
+    AggrSt = [{value, 1}, {points, 4}],
     ?th:keep_trying_receive({push, Metric, Tags, Ts, AggrSt, Aggregate}, 200, 10),
     unload_vnode_push(),
     ok.
@@ -107,7 +107,7 @@ t_edge_avg(_Config) ->
     freya_rollup:push(Metric, Tags, Ts+1, 2, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+2, 3, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+3, 4, Aggregate),
-    AggrSt = [{avg, 2.5}, {points, 4}],
+    AggrSt = [{value, 2.5}, {points, 4}],
     ?th:keep_trying_receive({push, Metric, Tags, Ts, AggrSt, Aggregate}, 200, 10),
     unload_vnode_push(),
     ok.
@@ -119,7 +119,7 @@ t_late_metrics(_Config) ->
     Ts = freya_utils:floor(tic:now_to_epoch_msecs(), Precision),
     ok = freya_rollup:push(Metric, Tags, Ts, 1, Aggregate, MaxDelay),
     ?th:keep_trying(true, fun() -> tic:now_to_epoch_msecs() > Ts+2000 end,
-                    100, 20),
+                    100, 21),
     {error, too_late} = freya_rollup:push(Metric, Tags, Ts+1, 1, Aggregate, MaxDelay),
     ok.
 
@@ -131,8 +131,11 @@ t_vnode_sum(_Config) ->
     freya_rollup:push(Metric, Tags, Ts+1, 1, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+2, 1, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+3, 1, Aggregate),
-    ?th:keep_trying({ok, 4},
-                    fun() -> freya_get_fsm:get(Metric, Tags, Ts, Aggregate) end,
+    ?th:keep_trying(4,
+                    fun() ->
+                        {ok, Obj} = freya_get_fsm:get(Metric, Tags, Ts, Aggregate),
+                        freya_object:value(Obj)
+                    end,
                     200, 10),
     ok.
 
@@ -144,8 +147,11 @@ t_vnode_max(_Config) ->
     freya_rollup:push(Metric, Tags, Ts+1, 2, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+2, 3, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+3, 4, Aggregate),
-    ?th:keep_trying({ok, 4},
-                    fun() -> freya_get_fsm:get(Metric, Tags, Ts, Aggregate) end,
+    ?th:keep_trying(4,
+                    fun() ->
+                        {ok, Obj} = freya_get_fsm:get(Metric, Tags, Ts, Aggregate),
+                        freya_object:value(Obj)
+                    end,
                     200, 10),
     ok.
 
@@ -157,8 +163,11 @@ t_vnode_min(_Config) ->
     freya_rollup:push(Metric, Tags, Ts+1, 2, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+2, 3, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+3, 4, Aggregate),
-    ?th:keep_trying({ok, 1},
-                    fun() -> freya_get_fsm:get(Metric, Tags, Ts, Aggregate) end,
+    ?th:keep_trying(1,
+                    fun() ->
+                        {ok, Obj} = freya_get_fsm:get(Metric, Tags, Ts, Aggregate),
+                        freya_object:value(Obj)
+                    end,
                     200, 10),
     ok.
 
@@ -170,8 +179,11 @@ t_vnode_avg(_Config) ->
     freya_rollup:push(Metric, Tags, Ts+1, 2, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+2, 3, Aggregate),
     freya_rollup:push(Metric, Tags, Ts+3, 4, Aggregate),
-    ?th:keep_trying({ok, 2.5},
-                    fun() -> freya_get_fsm:get(Metric, Tags, Ts, Aggregate) end,
+    ?th:keep_trying(2.5,
+                    fun() ->
+                        {ok, Obj} = freya_get_fsm:get(Metric, Tags, Ts, Aggregate),
+                        freya_object:value(Obj)
+                    end,
                     200, 10),
     ok.
 

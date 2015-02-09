@@ -63,13 +63,10 @@ sanitize_tags(Tags) ->
                 orddict:store(Name, lists:sort([Value|List]), D0)
         end
     end,
-    lists:foldl(FoldTagsFun, orddict:new(), unique(Tags)).
+    lists:foldl(FoldTagsFun, orddict:new(), lists:usort(Tags)).
 
 sanitize_name(Name) when is_binary(Name) ->
     {?DEFAULT_NS, Name}.
-
-unique(L) ->
-    sets:to_list(sets:from_list(L)).
 
 pmap(F, Args, L) ->
     pmap(F, Args, L, ?DEFAULT_PMAP_TIMEOUT).
@@ -140,12 +137,17 @@ aggregator_funs(avg) ->
      end,
      fun({X, _}) -> X end}.
 
-aggregate_key(Metric, Tags, Ts, {Fun, Precision}) ->
-    Key = [{<<"tags">>, Tags},
+aggregate_key({Ns, Name}, Tags, Ts, {Fun, Precision}) ->
+    Part1 = [{<<"ns">>, Ns},
+             {<<"name">>, Name}],
+    Part2 = [{<<"tags">>, Tags},
            {<<"ts">>, Ts},
            {<<"fun">>, atom_to_binary(Fun, utf8)},
            {<<"precision">>, freya_utils:ms(Precision)}],
-    {Metric, msgpack:pack(Key, [{format,jsx}])}.
+    {msgpack:pack(Part1, [{format,jsx}]),
+     msgpack:pack(Part2, [{format,jsx}])};
+aggregate_key(Name, Tags, Ts, Aggregate) ->
+    aggregate_key({?DEFAULT_NS, Name}, Tags, Ts, Aggregate).
 
 wait_for_reqid(ReqId, Timeout) ->
     receive

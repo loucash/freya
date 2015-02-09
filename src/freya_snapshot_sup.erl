@@ -1,9 +1,10 @@
--module(freya_rollup_topsup).
-
+-module(freya_snapshot_sup).
 -behaviour(supervisor).
 
 %% API
--export([start_link/0]).
+-export([start_link/0,
+         start_child/1,
+         terminate_child/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -15,16 +16,18 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+start_child(Args) ->
+    supervisor:start_child(?MODULE, Args).
+
+terminate_child(Pid) ->
+    supervisor:terminate_child(?MODULE, Pid).
+
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
 
 init([]) ->
-    Router = {freya_rollup,
-              {freya_rollup, start_link, []},
-              permanent, infinity, worker, [freya_rollup]},
-    Workers = {freya_rollup_sup,
-               {freya_rollup_sup, start_link, []},
-               permanent, infinity, supervisor, [freya_rollup_sup]},
-    {ok, {{rest_for_one, 10, 10},
-          [Router, Workers]}}.
+    Spec = {freya_snapshot_wrk,
+            {freya_snapshot_wrk, start_link, []},
+            temporary, infinity, worker, [freya_snapshot_wrk]},
+    {ok, {{simple_one_for_one, 10, 10}, [Spec]}}.

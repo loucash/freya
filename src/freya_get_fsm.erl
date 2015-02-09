@@ -2,7 +2,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([get/4]).
+-export([get/4, get_async/4]).
 -export([start_link/6]).
 
 -export([prepare/2,
@@ -43,9 +43,13 @@
 %%%===================================================================
 
 get(Metric, Tags, Ts, Aggregate) ->
+    {ok, ReqId} = get_async(Metric, Tags, Ts, Aggregate),
+    freya_utils:wait_for_reqid(ReqId, ?TIMEOUT).
+
+get_async(Metric, Tags, Ts, Aggregate) ->
     ReqId = make_ref(),
     freya_get_fsm_sup:start_child([ReqId, self(), Metric, Tags, Ts, Aggregate]),
-    freya_utils:wait_for_reqid(ReqId, ?TIMEOUT).
+    {ok, ReqId}.
 
 start_link(ReqId, From, Metric, Tags, Ts, Aggregate) ->
     gen_fsm:start_link(?MODULE, [ReqId, From, Metric, Tags, Ts, Aggregate], []).
@@ -68,8 +72,9 @@ prepare(timeout, #state{metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate, n=
     Preflist2 = [{Index, Node} || {{Index, Node}, _Type} <- Preflist],
     {next_state, execute, State#state{preflist=Preflist2, key=Key}, 0}.
 
-execute(timeout, #state{preflist=PrefList, req_id=ReqId, key=Key}=State) ->
-    freya_stats_vnode:get(PrefList, ReqId, Key),
+execute(timeout, #state{preflist=PrefList, req_id=ReqId, metric=Metric,
+                        tags=Tags, ts=Ts, aggregate=Aggregate}=State) ->
+    freya_stats_vnode:get(PrefList, ReqId, Metric, Tags, Ts, Aggregate),
     {next_state, waiting, State}.
 
 waiting({ok, ReqId, IdxNode, Obj},
@@ -80,9 +85,13 @@ waiting({ok, ReqId, IdxNode, Obj},
     State   = State0#state{responses=Resp, replies=Replies},
     case Resp =:= R of
         true ->
-            Reply = freya_object:value(merge(Replies)),
-            From ! {ok, ReqId, Reply},
-
+            Reply = merge(Replies),
+            case Reply of
+                not_found ->
+                    From ! {error, ReqId, Reply};
+                _ ->
+                    From ! {ok, ReqId, Reply}
+            end,
             case Resp =:= N of
                 true ->
                     {next_state, finalize, State, 0};
@@ -90,8 +99,12 @@ waiting({ok, ReqId, IdxNode, Obj},
                     {next_state, wait_for_n, State, ?WAIT_TIMEOUT}
             end;
         false ->
-            {next_state, waiting, State}
-    end.
+            {next_state, waiting, State, ?WAIT_TIMEOUT}
+    end;
+
+waiting(timeout, State) ->
+    % todo: partial repair?
+    {stop, normal, State}.
 
 wait_for_n({ok, _ReqId, IdxNode, Obj}, #state{responses=Resp0, replies=Replies0,
                                               n=N}=State0) ->
@@ -106,7 +119,7 @@ wait_for_n({ok, _ReqId, IdxNode, Obj}, #state{responses=Resp0, replies=Replies0,
     end;
 
 wait_for_n(timeout, State) ->
-    % todo: partial repair
+    % todo: partial repair?
     {stop, normal, State}.
 
 finalize(timeout, #state{replies=Replies, key=Key}=State) ->
