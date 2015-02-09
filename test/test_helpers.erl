@@ -9,6 +9,8 @@
 -include_lib("common_test/include/ct.hrl").
 
 setup_env() ->
+    _ = application:load(riak_core),
+    ok = application:set_env(riak_core, handoff_port, 7333),
     ok = create_data_ring_dir().
 
 randomize(S) ->
