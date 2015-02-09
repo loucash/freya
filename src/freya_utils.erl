@@ -5,7 +5,7 @@
 
 -export([floor/2, ceil/2, prev/2, next/2, ms/1]).
 -export([aggregator_funs/1, aggregate_key/4]).
--export([sanitize_tags/1]).
+-export([sanitize_tags/1, sanitize_name/1]).
 -export([row_width/1]).
 -export([wait_for_reqid/2]).
 -export([pmap/3, pmap/4]).
@@ -64,6 +64,9 @@ sanitize_tags(Tags) ->
         end
     end,
     lists:foldl(FoldTagsFun, orddict:new(), unique(Tags)).
+
+sanitize_name(Name) when is_binary(Name) ->
+    {?DEFAULT_NS, Name}.
 
 unique(L) ->
     sets:to_list(sets:from_list(L)).

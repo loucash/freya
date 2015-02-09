@@ -62,10 +62,11 @@ init([ReqId, From, Metric, Tags, Ts, Aggregate]) ->
     {ok, prepare, State, 0}.
 
 prepare(timeout, #state{metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate, n=N}=State) ->
-    Key = freya_utils:aggregate_key(Metric, Tags, Ts, Aggregate),
-    DocIdx = riak_core_util:chash_key(Key),
-    Preflist = riak_core_apl:get_primary_apl(DocIdx, N, freya_stats),
-    {next_state, execute, State#state{preflist=Preflist, key=Key}, 0}.
+    Key       = freya_utils:aggregate_key(Metric, Tags, Ts, Aggregate),
+    DocIdx    = riak_core_util:chash_key(Key),
+    Preflist  = riak_core_apl:get_primary_apl(DocIdx, N, freya_stats),
+    Preflist2 = [{Index, Node} || {{Index, Node}, _Type} <- Preflist],
+    {next_state, execute, State#state{preflist=Preflist2, key=Key}, 0}.
 
 execute(timeout, #state{preflist=PrefList, req_id=ReqId, key=Key}=State) ->
     freya_stats_vnode:get(PrefList, ReqId, Key),

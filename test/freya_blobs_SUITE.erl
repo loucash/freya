@@ -28,17 +28,18 @@ t_encode_decode_rowkey(_Config) ->
 
 %% PropEr
 prop_encode_decode_rowkey() ->
-    ?FORALL({MetricName, Timestamp, Tags, Value},
-            {metric_name(), timestamp(), tags(), value()},
+    ?FORALL({Metric, Timestamp, Tags, Value},
+            {metric(), timestamp(), tags(), value()},
            begin
-               DP1 = freya_data_point:new(MetricName, Timestamp, Value, Tags),
+               DP1 = freya_data_point:new(Metric, Timestamp, Value, Tags),
                {ok, {Row, Ts, Val}} = freya_data_point:encode(DP1),
                {ok, DP2} = freya_data_point:decode(Row, Ts, Val),
                DP1 =:= DP2
            end).
 
-metric_name() ->
-    non_empty(utf8_bin()).
+metric() ->
+    oneof([ {non_empty(utf8_bin()), non_empty(utf8_bin())},
+            non_empty(utf8_bin()) ]).
 
 utf8_bin() ->
     ?LET(S,

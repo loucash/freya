@@ -1,8 +1,3 @@
-%%%-------------------------------------------------------------------
-%%% @doc
-%%% Module with codecs for rowkey
-%%% @end
-%%%-------------------------------------------------------------------
 -module(freya_blobs).
 
 -export([encode_rowkey/4,
@@ -16,6 +11,7 @@
          decode_offset/1,
          decode_value/2]).
 -export([encode_search_key/3]).
+-export([encode_idx/1]).
 
 -include("freya.hrl").
 
@@ -31,18 +27,16 @@
 -define(FUN_AVG, 16#03).
 -define(FUN_SUM, 16#04).
 
-%%%===================================================================
-%%% API
-%%%===================================================================
--spec encode_rowkey(metric_name(), milliseconds(), data_type(), data_tags()) ->
+-spec encode_rowkey(metric(), milliseconds(), data_type(), data_tags()) ->
     {ok, binary()}.
-encode_rowkey(MetricName, Ts, Type, Tags) ->
-    encode_rowkey(MetricName, Ts, Type, Tags, raw).
+encode_rowkey(Metric, Ts, Type, Tags) ->
+    encode_rowkey(Metric, Ts, Type, Tags, raw).
 
-encode_rowkey(MetricName, Ts, Type, Tags0, DataPrecision) ->
-    RowWidth         = freya_utils:row_width(DataPrecision),
-    RowTime          = freya_utils:floor(Ts, RowWidth),
-    MetricNameLength = byte_size(MetricName),
+encode_rowkey({Ns,Name}, Ts, Type, Tags0, DataPrecision) ->
+    RowWidth   = freya_utils:row_width(DataPrecision),
+    RowTime    = freya_utils:floor(Ts, RowWidth),
+    NsLength   = byte_size(Ns),
+    NameLength = byte_size(Name),
     {AggregateFun,
      AggregateParam1,
      AggregateParam2} = encode_data_precision(DataPrecision),
@@ -51,8 +45,10 @@ encode_rowkey(MetricName, Ts, Type, Tags0, DataPrecision) ->
     TagsLength       = byte_size(Tags),
 
     Bin = <<?MODEL_VERSION:8/integer,
-            MetricNameLength:16/integer,
-            MetricName/binary,
+            NsLength:8/integer,
+            Ns/binary,
+            NameLength:8/integer,
+            Name/binary,
             AggregateFun:8/integer,
             AggregateParam1:64/integer,
             AggregateParam2:64/integer,
@@ -60,12 +56,17 @@ encode_rowkey(MetricName, Ts, Type, Tags0, DataPrecision) ->
             DataType:8/integer,
             TagsLength:16/integer,
             Tags/binary>>,
-    {ok, Bin}.
+    {ok, Bin};
+encode_rowkey(Name, Ts, Type, Tags, DataPrecision)
+  when is_binary(Name) ->
+    encode_rowkey(freya_utils:sanitize_name(Name), Ts, Type, Tags, DataPrecision).
 
 -spec decode_rowkey(binary()) -> {ok, proplists:proplist()} | {error, invalid}.
 decode_rowkey(<<?MODEL_VERSION:8/integer,
-                MetricNameLength:16/integer,
-                MetricName:MetricNameLength/binary-unit:8,
+                NsLength:8/integer,
+                Ns:NsLength/binary-unit:8,
+                NameLength:8/integer,
+                Name:NameLength/binary-unit:8,
                 AggregateFun:8/integer,
                 AggregateParam1:64/integer,
                 AggregateParam2:64/integer,
@@ -74,13 +75,14 @@ decode_rowkey(<<?MODEL_VERSION:8/integer,
                 TagsLength:16/integer,
                 Tags:TagsLength/binary-unit:8
               >>) ->
-    Result = [{name,        MetricName},
-              {row_time,    RowTime},
-              {type,        decode_data_type(DataType)},
-              {tags,        decode_tags(Tags)},
-              {precision,   decode_data_precision(AggregateFun,
-                                                  AggregateParam1,
-                                                  AggregateParam2)}],
+    Result = [{ns,        Ns},
+              {name,      Name},
+              {row_time,  RowTime},
+              {type,      decode_data_type(DataType)},
+              {tags,      decode_tags(Tags)},
+              {precision, decode_data_precision(AggregateFun,
+                                                AggregateParam1,
+                                                AggregateParam2)}],
     {ok, Result};
 decode_rowkey(_) ->
     {error, invalid}.
@@ -121,25 +123,33 @@ decode_value(Value, long) ->
 decode_value(<<Value/float>>, double) ->
     {ok, Value}.
 
--spec encode_search_key(metric_name(), milliseconds(), data_precision()) -> {ok, binary()}.
-encode_search_key(MetricName, Ts, DataPrecision) ->
-    MetricNameLength = byte_size(MetricName),
+-spec encode_search_key(metric(), milliseconds(), data_precision()) -> {ok, binary()}.
+encode_search_key({Ns,Name}, Ts, DataPrecision) ->
+    NsLength = byte_size(Ns),
+    NameLength = byte_size(Name),
     {AggregateFun,
      AggregateParam1,
      AggregateParam2} = encode_data_precision(DataPrecision),
 
     Bin = <<?MODEL_VERSION:8/integer,
-            MetricNameLength:16/integer,
-            MetricName/binary,
+            NsLength:8/integer,
+            Ns/binary,
+            NameLength:8/integer,
+            Name/binary,
             AggregateFun:8/integer,
             AggregateParam1:64/integer,
             AggregateParam2:64/integer,
             Ts:64/integer>>,
-    {ok, Bin}.
+    {ok, Bin};
+encode_search_key(Name, Ts, DataPrecision)
+  when is_binary(Name) ->
+    encode_search_key(freya_utils:sanitize_name(Name), Ts, DataPrecision).
 
-%%%===================================================================
-%%% Internal
-%%%===================================================================
+-spec encode_idx(metric()) -> binary().
+encode_idx({Ns, Name}) ->
+    <<Ns/binary, Name/binary>>.
+
+
 encode_data_precision(raw) ->
     {?RAW_DATA, ?RAW_DATA, ?RAW_DATA};
 encode_data_precision({Fun, Precision}) ->

@@ -11,7 +11,7 @@ CQLSH = cqlsh
 
 .PHONY: all build_plt compile configure console deps doc clean depclean distclean dialyze test test-console
 
-all: deps compile data/ring cassandra-freya kairosdb-ui
+all: deps compile data/ring cassandra-freya
 
 build_plt:
 	@dialyzer --build_plt --apps $(PLT_APPS)
@@ -45,6 +45,7 @@ distclean:
 	@rm -rf logs
 	@rm -rf ct_log
 	@rm -rf log
+	@rm -rf _builds
 
 dialyze:
 	@dialyzer $(DIALYZER_OPTS) -r ebin
@@ -68,15 +69,10 @@ dev: compile-fast dev-console
 dev-clean: cassandra-freya dev
 
 dev-console:
-	$(ERL) -sname $(SNAME) $(EPATH) -s freya -config sys
+	$(ERL) -sname $(SNAME) $(EPATH) -s freya -config sys -config riak_core
 
 spam:
 	@erl -pa deps/*/ebin -pa ebin -config sys -s lager
-
-kairosdb-ui: priv/ui
-
-priv/ui:
-	@cd priv && curl -O http://mtod.org/ui.tar.gz && tar xzfv ui.tar.gz
 
 data/ring:
 	@rm -rf data/ring
@@ -94,16 +90,16 @@ ct-single:
 	@open ct_log/all_runs.html
 
 rel: all
-	@./rebar generate
+	@./relx -c rel/freya.config -o _build/release --overlay_vars=vars/deploy.config
 
 relclean:
 	@rm -rf rel/freya
 
-devrels: dev1 dev2 dev3 dev4
+_build/devrels: dev1 dev2 dev3 dev4
 
 dev1 dev2 dev3 dev4:
 	mkdir -p dev
-	./relx -c rel/freya.config -o devrels/$@ --overlay_vars=vars/$@.config
+	./relx -c rel/freya.config -o _build/devrels/$@ --overlay_vars=vars/$@.config
 
 devclean:
-	rm -rf _devrels
+	rm -rf _build/devrels

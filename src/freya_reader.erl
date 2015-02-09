@@ -10,12 +10,14 @@
 
 -export([statements/0]).
 -export([search/1, search/2]).
--export([metric_names/0, metric_names/1]).
+-export([metric_names/1, metric_names/2]).
+-export([namespaces/0, namespaces/1]).
 
 % exported for tests
 -export([read_row_size/0]).
 
--type option()  :: {metric_name, binary()} |
+-type option()  :: {ns, metric_ns()} |
+                   {name, metric_name()} |
                    {start_time, milliseconds()} |
                    {end_time, milliseconds()} |
                    {align, boolean()} |
@@ -26,14 +28,15 @@
 -type options() :: [option()].
 
 -record(search, {
-          metric_name       :: binary(),
-          start_time        :: milliseconds(),
-          end_time          :: milliseconds() | undefined,
-          align = false     :: boolean(),
-          aggregator        :: undefined | {aggregate(), precision()},
-          tags              :: proplists:proplist(),
-          order  = asc      :: data_order(),
-          source = raw      :: data_precision()
+          ns = ?DEFAULT_NS :: metric_ns(),
+          name             :: metric_name(),
+          start_time       :: milliseconds(),
+          end_time         :: milliseconds() | undefined,
+          align = false    :: boolean(),
+          aggregator       :: undefined | {aggregate(), precision()},
+          tags             :: proplists:proplist(),
+          order  = asc     :: data_order(),
+          source = raw     :: data_precision()
          }).
 -type search()  :: #search{}.
 
@@ -83,15 +86,30 @@ search(Pool, Options) when is_list(Options) ->
             Error
     end.
 
--spec metric_names() -> {ok, list()} | {error, any()}.
-metric_names() ->
-    metric_names(?CS_READ_POOL).
+-spec metric_names(metric_ns()) ->
+    {ok, list(metric_ns())}
+    | {error, any()}.
+metric_names(Ns) ->
+    metric_names(?CS_READ_POOL, Ns).
 
--spec metric_names(pool_name()) -> {ok, list()} | {error, any()}.
-metric_names(Pool) ->
+-spec metric_names(pool_name(), metric_ns()) ->
+    {ok, list(metric_name())}
+    | {error, any()}.
+metric_names(Pool, Ns) ->
     with_pool(Pool, fun(Client) ->
                             erlcql_client:execute(Client, ?SELECT_STRING_INDEX,
-                                                  [?ROW_KEY_METRIC_NAMES], [read_consistency()])
+                                                  [?ROW_KEY_METRIC_NAMES(Ns)], [read_consistency()])
+                    end).
+
+-spec namespaces() -> {ok, list()} | {error, any()}.
+namespaces() ->
+    namespaces(?CS_READ_POOL).
+
+-spec namespaces(pool_name()) -> {ok, list()} | {error, any()}.
+namespaces(Pool) ->
+    with_pool(Pool, fun(Client) ->
+                            erlcql_client:execute(Client, ?SELECT_STRING_INDEX,
+                                                  [?ROW_KEY_NAMESPACES], [read_consistency()])
                     end).
 
 %%%===================================================================
@@ -100,8 +118,10 @@ metric_names(Pool) ->
 -spec verify_options(options(), search()) -> {ok, search()} | {error, any()}.
 verify_options([], Search) ->
     {ok, Search};
-verify_options([{metric_name, MetricName}|Options], Search) when is_binary(MetricName) ->
-    verify_options(Options, Search#search{metric_name=MetricName});
+verify_options([{ns, Ns}|Options], Search) when is_binary(Ns) ->
+    verify_options(Options, Search#search{ns=Ns});
+verify_options([{name, Name}|Options], Search) when is_binary(Name) ->
+    verify_options(Options, Search#search{name=Name});
 verify_options([{start_time, Start}|Options], Search) when is_integer(Start) ->
     verify_options(Options, Search#search{start_time=Start});
 verify_options([{end_time, End}|Options], Search) when is_integer(End) ->
@@ -155,8 +175,8 @@ read_consistency() ->
     {consistency, A}.
 
 %% @doc Performs all steps of reading data from cassandra
-do_search(_Pool, #search{metric_name=undefined}) ->
-    {error, {missing_param, metric_name}};
+do_search(_Pool, #search{name=undefined}) ->
+    {error, {missing_param, name}};
 do_search(_Pool, #search{start_time=undefined}) ->
     {error, {missing_param, start_time}};
 do_search(_Pool, #search{start_time=ST, end_time=ET}) when ET =/= undefined andalso
@@ -189,25 +209,27 @@ search_rows(Pool, Search) ->
     with_pool(Pool, fun(Client) -> do_search_rows(Client, Search) end).
 
 %% @doc Return query execute result
-do_search_rows(Client, #search{metric_name=MetricName, order=Order, source=Source,
+do_search_rows(Client, #search{ns=Ns, name=Name, order=Order, source=Source,
                                start_time=StartTs, end_time=undefined}) ->
-    RowWidth     = freya_utils:row_width(Source),
-    StartRowTime = freya_utils:floor(StartTs, RowWidth),
-    {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartRowTime, raw),
+    MetricIdx        = freya_blobs:encode_idx({Ns, Name}),
+    RowWidth         = freya_utils:row_width(Source),
+    StartRowTime     = freya_utils:floor(StartTs, RowWidth),
+    {ok, StartTsBin} = freya_blobs:encode_search_key({Ns, Name}, StartRowTime, raw),
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_FROM_START(Order),
-                          [MetricName, StartTsBin],
+                          [MetricIdx, StartTsBin],
                           [read_consistency()]);
-do_search_rows(Client, #search{metric_name=MetricName, order=Order, source=Source,
+do_search_rows(Client, #search{ns=Ns, name=Name, order=Order, source=Source,
                                start_time=StartTs, end_time=EndTs}) ->
+    MetricIdx    = freya_blobs:encode_idx({Ns, Name}),
     RowWidth     = freya_utils:row_width(Source),
     StartRowTime = freya_utils:floor(StartTs, RowWidth),
     EndRowTime   = freya_utils:floor(EndTs, RowWidth) + 1,
-    {ok, StartTsBin} = freya_blobs:encode_search_key(MetricName, StartRowTime, raw),
-    {ok, EndTsBin}   = freya_blobs:encode_search_key(MetricName, EndRowTime, raw),
+    {ok, StartTsBin} = freya_blobs:encode_search_key(Name, StartRowTime, raw),
+    {ok, EndTsBin}   = freya_blobs:encode_search_key(Name, EndRowTime, raw),
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_IN_RANGE(Order),
-                          [MetricName, StartTsBin, EndTsBin],
+                          [MetricIdx, StartTsBin, EndTsBin],
                           [read_consistency()]).
 
 %% @doc Return tuples with original and decoded rowkey

@@ -1,8 +1,3 @@
-%%%-------------------------------------------------------------------
-%%% @doc
-%%% Worker responsible for batch insert of data points into cassandra
-%%% @end
-%%%-------------------------------------------------------------------
 -module(freya_writer).
 -behaviour(gen_server).
 
@@ -14,6 +9,7 @@
 -export([start_link/1]).
 -export([statements/0]).
 -export([save/2, save/3]).
+-export([publisher/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -31,9 +27,6 @@
 
 -type save_options() :: [{ttl, ttl()} | {aggregate, data_precision()}].
 
-%%%===================================================================
-%%% API
-%%%===================================================================
 statements() ->
     [
      {?INSERT_DATA_POINT_TTL,
@@ -71,9 +64,10 @@ save(Publisher, DataPoint, Opts) ->
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
-%%%===================================================================
-%%% gen_server callbacks
-%%%===================================================================
+-spec publisher() ->
+    {ok, eqm:pub()}.
+publisher() ->
+    eqm:publisher_info(?CS_WRITERS_PUB).
 
 init(Publisher) ->
     {ok, BatchSize} = freya:get_env(write_batch_size),
@@ -96,10 +90,8 @@ handle_info({mail, _, Queries0, _}, #state{write_delay=WriteDelay,
     {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(?CS_WRITE_POOL),
     Client = erlcql_cluster_worker:get_client(Worker),
     Res = erlcql_client:batch(Client, Queries, [consistency()]),
-    L = length(Queries0),
     case Res of
         {ok, _} ->
-            freya_tcp_status:inc(metrics_saved, L),
             ok;
         {error, Reason} ->
             lager:error("Error during batch save: ~p", [Reason]),
@@ -141,12 +133,14 @@ consistency() ->
 
 -spec save_data_point_queries(data_point(), ttl(), data_precision()) -> list().
 save_data_point_queries(DP, TTL, DataPrecision) ->
+    Ns   = freya_data_point:ns(DP),
     Name = freya_data_point:name(DP),
     Tags = freya_data_point:tags(DP),
     {ok, {RowKey, Offset, Value}} = freya_data_point:encode(DP, DataPrecision),
     [insert_data_point(RowKey, Offset, Value, TTL),
-     insert_row_index(Name, RowKey, TTL, DataPrecision),
-     insert_string_index(?ROW_KEY_METRIC_NAMES, Name)]
+     insert_row_index({Ns, Name}, RowKey, TTL, DataPrecision),
+     insert_string_index(?ROW_KEY_METRIC_NAMES(Ns), Name),
+     insert_string_index(?ROW_KEY_NAMESPACES, Ns)]
     ++ lists:flatmap(
          fun({TagName, TagValues}) ->
             [insert_string_index(?ROW_KEY_TAG_NAMES, TagName)]
@@ -161,11 +155,11 @@ insert_data_point(RowKey, Offset, Value, infinity) ->
 insert_data_point(RowKey, Offset, Value, TTL) when is_integer(TTL) ->
     {?INSERT_DATA_POINT_TTL, [RowKey, Offset, Value, TTL]}.
 
-insert_row_index(Name, RowKey, infinity, _DataPrecision) ->
-    {?INSERT_ROW_INDEX, [Name, RowKey, <<0>>]};
-insert_row_index(Name, RowKey, TTL, DataPrecision) ->
+insert_row_index({_, _}=N, RowKey, infinity, _DataPrecision) ->
+    {?INSERT_ROW_INDEX, [freya_blobs:encode_idx(N), RowKey, <<0>>]};
+insert_row_index({_, _}=N, RowKey, TTL, DataPrecision) ->
     RowIndexTTL = row_index_ttl(TTL, DataPrecision),
-    {?INSERT_ROW_INDEX_TTL, [Name, RowKey, <<0>>, RowIndexTTL]}.
+    {?INSERT_ROW_INDEX_TTL, [freya_blobs:encode_idx(N), RowKey, <<0>>, RowIndexTTL]}.
 
 row_index_ttl(TTL, DataPrecision) ->
     RowWidth    = freya_utils:row_width(DataPrecision),
