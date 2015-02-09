@@ -89,7 +89,7 @@ ct-single:
 	@open ct_log/all_runs.html
 
 rel: all
-	@./rebar generate
+	@./relx -c rel/freya.config -o _rel --overlay_vars=vars/deploy.config
 
 relclean:
 	@rm -rf rel/freya
