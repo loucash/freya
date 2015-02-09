@@ -89,16 +89,16 @@ ct-single:
 	@open ct_log/all_runs.html
 
 rel: all
-	@./relx -c rel/freya.config -o _rel --overlay_vars=vars/deploy.config
+	@./relx -c rel/freya.config -o _build/release --overlay_vars=vars/deploy.config
 
 relclean:
 	@rm -rf rel/freya
 
-devrels: dev1 dev2 dev3 dev4
+_build/devrels: dev1 dev2 dev3 dev4
 
 dev1 dev2 dev3 dev4:
 	mkdir -p dev
-	./relx -c rel/freya.config -o devrels/$@ --overlay_vars=vars/$@.config
+	./relx -c rel/freya.config -o _build/devrels/$@ --overlay_vars=vars/$@.config
 
 devclean:
-	rm -rf _devrels
+	rm -rf _build/devrels
