@@ -45,6 +45,7 @@ distclean:
 	@rm -rf logs
 	@rm -rf ct_log
 	@rm -rf log
+	@rm -rf _builds
 
 dialyze:
 	@dialyzer $(DIALYZER_OPTS) -r ebin
