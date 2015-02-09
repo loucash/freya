@@ -11,6 +11,7 @@
          decode_offset/1,
          decode_value/2]).
 -export([encode_search_key/3]).
+-export([encode_idx/1]).
 
 -include("freya.hrl").
 
@@ -144,6 +145,9 @@ encode_search_key(Name, Ts, DataPrecision)
   when is_binary(Name) ->
     encode_search_key(freya_utils:sanitize_name(Name), Ts, DataPrecision).
 
+-spec encode_idx(metric()) -> binary().
+encode_idx({Ns, Name}) ->
+    <<Ns/binary, Name/binary>>.
 
 
 encode_data_precision(raw) ->

@@ -138,7 +138,7 @@ save_data_point_queries(DP, TTL, DataPrecision) ->
     Tags = freya_data_point:tags(DP),
     {ok, {RowKey, Offset, Value}} = freya_data_point:encode(DP, DataPrecision),
     [insert_data_point(RowKey, Offset, Value, TTL),
-     insert_row_index(Name, RowKey, TTL, DataPrecision),
+     insert_row_index({Ns, Name}, RowKey, TTL, DataPrecision),
      insert_string_index(?ROW_KEY_METRIC_NAMES(Ns), Name),
      insert_string_index(?ROW_KEY_NAMESPACES, Ns)]
     ++ lists:flatmap(
@@ -155,11 +155,11 @@ insert_data_point(RowKey, Offset, Value, infinity) ->
 insert_data_point(RowKey, Offset, Value, TTL) when is_integer(TTL) ->
     {?INSERT_DATA_POINT_TTL, [RowKey, Offset, Value, TTL]}.
 
-insert_row_index(Name, RowKey, infinity, _DataPrecision) ->
-    {?INSERT_ROW_INDEX, [Name, RowKey, <<0>>]};
-insert_row_index(Name, RowKey, TTL, DataPrecision) ->
+insert_row_index({_, _}=N, RowKey, infinity, _DataPrecision) ->
+    {?INSERT_ROW_INDEX, [freya_blobs:encode_idx(N), RowKey, <<0>>]};
+insert_row_index({_, _}=N, RowKey, TTL, DataPrecision) ->
     RowIndexTTL = row_index_ttl(TTL, DataPrecision),
-    {?INSERT_ROW_INDEX_TTL, [Name, RowKey, <<0>>, RowIndexTTL]}.
+    {?INSERT_ROW_INDEX_TTL, [freya_blobs:encode_idx(N), RowKey, <<0>>, RowIndexTTL]}.
 
 row_index_ttl(TTL, DataPrecision) ->
     RowWidth    = freya_utils:row_width(DataPrecision),

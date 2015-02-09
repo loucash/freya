@@ -64,7 +64,7 @@ t_write_read_data_point(_Config) ->
     DPIn = freya_data_point:new(MetricName, Ts, 1),
     ok = freya_writer:save(Publisher, DPIn),
     ?th:keep_trying({ok, [DPIn]}, fun() ->
-                                          freya_reader:search([{metric_name, MetricName},
+                                          freya_reader:search([{name, MetricName},
                                                                {start_time, Ts}])
                                   end, 100, 200).
 
@@ -76,7 +76,7 @@ t_write_read_aggregate(_Config) ->
     ok = freya_writer:save(Publisher, DPIn, [{aggregate, {sum, {1, hours}}}]),
     ?th:keep_trying({ok, [DPIn]},
                     fun() ->
-                            freya_reader:search([{metric_name, MetricName},
+                            freya_reader:search([{name, MetricName},
                                                  {start_time, Ts},
                                                  {source, {sum, {1, hours}}}])
                     end, 100, 200).
@@ -90,13 +90,13 @@ t_write_read_aggregate_with_ttl(_Config) ->
                                              {aggregate, {sum, {1, hours}}}]),
     ?th:keep_trying({ok, [DPIn]},
                     fun() ->
-                            freya_reader:search([{metric_name, MetricName},
+                            freya_reader:search([{name, MetricName},
                                                  {start_time, Ts},
                                                  {source, {sum, {1, hours}}}])
                     end, 100, 200),
     ?th:keep_trying({ok, []},
                     fun() ->
-                            freya_reader:search([{metric_name, MetricName},
+                            freya_reader:search([{name, MetricName},
                                                  {start_time, Ts},
                                                  {source, {sum, {1, hours}}}])
                     end, 100, 200).
@@ -113,7 +113,7 @@ t_write_read_different_rows(_Config) ->
     ok = freya_writer:save(Publisher, DPIn1),
     ok = freya_writer:save(Publisher, DPIn2),
     ?th:keep_trying({ok, [DPIn1, DPIn2]}, fun() ->
-                                                  freya_reader:search([{metric_name, MetricName},
+                                                  freya_reader:search([{name, MetricName},
                                                                        {start_time, Ts1}])
                                           end, 100, 200).
 
@@ -133,7 +133,7 @@ t_read_row_size(_Config) ->
     ok = freya_writer:save(Publisher, DPIn4),
     ?th:keep_trying({ok, [DPIn1, DPIn2, DPIn3, DPIn4]},
                     fun() ->
-                            freya_reader:search([{metric_name, MetricName},
+                            freya_reader:search([{name, MetricName},
                                                  {start_time, Ts}])
                     end, 100, 200),
     meck:unload().
@@ -153,7 +153,7 @@ t_read_row_size_and_desc(_Config) ->
     ok = freya_writer:save(Publisher, DPIn3),
     ok = freya_writer:save(Publisher, DPIn4),
     ?th:keep_trying({ok, [DPIn4, DPIn3, DPIn2, DPIn1]},
-                    fun() -> freya_reader:search([{metric_name, MetricName},
+                    fun() -> freya_reader:search([{name, MetricName},
                                                   {start_time, Ts},
                                                   {order, desc}])
                     end, 100, 200),
@@ -173,7 +173,7 @@ t_start_end_time(_Config) ->
     ok = freya_writer:save(Publisher, DPIn3),
     ok = freya_writer:save(Publisher, DPIn4),
     ?th:keep_trying({ok, [DPIn1, DPIn2]},
-                    fun() -> freya_reader:search([{metric_name, MetricName},
+                    fun() -> freya_reader:search([{name, MetricName},
                                                  {start_time, Ts},
                                                  {end_time, Ts+1}])
                     end, 100, 200).
@@ -189,7 +189,7 @@ t_start_end_time_different_rowkeys(_Config) ->
     ok = freya_writer:save(Publisher, DPIn1),
     ok = freya_writer:save(Publisher, DPIn2),
     ?th:keep_trying({ok, [DPIn1, DPIn2]},
-                    fun() -> freya_reader:search([{metric_name, MetricName},
+                    fun() -> freya_reader:search([{name, MetricName},
                                                   {start_time, Ts1},
                                                   {end_time, Ts2}])
                     end, 100, 200).
@@ -204,7 +204,7 @@ t_filter_tags_1(_Config) ->
     ok = freya_writer:save(Publisher, DPIn2),
     ?th:keep_trying({ok, [DPIn1]},
                     fun() ->
-                            freya_reader:search([{metric_name, MetricName},
+                            freya_reader:search([{name, MetricName},
                                                  {start_time, Ts},
                                                  {tags, [{<<"foo">>, <<"bar">>}]}])
                     end, 100, 200).
@@ -218,7 +218,7 @@ t_filter_tags_2(_Config) ->
                                  {<<"baz">>, <<"fox">>}]),
     ok = freya_writer:save(Publisher, DPIn),
     ?th:keep_trying({ok, [DPIn]},
-                    fun() -> freya_reader:search([{metric_name, MetricName},
+                    fun() -> freya_reader:search([{name, MetricName},
                                                   {start_time, Ts},
                                                   {tags, [{<<"foo">>, <<"bar">>}]}])
                     end, 100, 200).
@@ -240,7 +240,7 @@ t_sum_aggregate(_Config) ->
     DPOut = DPIn1#data_point{value=4},
     ?th:keep_trying({ok, [DPOut]},
                     fun() ->
-                            freya_reader:search([{metric_name, MetricName},
+                            freya_reader:search([{name, MetricName},
                                                  {start_time, Ts},
                                                  {aggregate, {sum, {1, seconds}}}])
                     end, 100, 200),
@@ -263,7 +263,7 @@ t_sum_aggregate_aligned(_Config) ->
     DPOut = DPIn1#data_point{value=4, ts=Ts},
     ?th:keep_trying({ok, [DPOut]},
                     fun() ->
-                            freya_reader:search([{metric_name, MetricName},
+                            freya_reader:search([{name, MetricName},
                                                  {start_time, Ts},
                                                  {aggregate, {sum, {1, seconds}}},
                                                  {align, true}])
@@ -297,7 +297,7 @@ t_sum_aggregate_aligned_different_types(_Config) ->
     Set = sets:from_list([DPOut1, DPOut2]),
     ?th:keep_trying(Set,
                     fun() ->
-                            {ok, L} = freya_reader:search([{metric_name, MetricName},
+                            {ok, L} = freya_reader:search([{name, MetricName},
                                                            {start_time, Ts},
                                                            {aggregate, {sum, {1, seconds}}},
                                                            {align,
@@ -324,7 +324,7 @@ t_avg_aggregate(_Config) ->
     DPOut2 = DPIn3#data_point{value=1.0},
     ?th:keep_trying({ok, [DPOut1, DPOut2]},
                     fun() ->
-                            freya_reader:search([{metric_name, MetricName},
+                            freya_reader:search([{name, MetricName},
                                                  {start_time, Ts},
                                                  {aggregate, {avg, {1, seconds}}}])
                     end, 100, 200),
@@ -348,7 +348,7 @@ t_avg_aggregate_aligned(_Config) ->
     DPOut2 = DPIn3#data_point{ts=Ts+1000, value=1.0},
     ?th:keep_trying({ok, [DPOut1, DPOut2]},
                     fun() ->
-                            freya_reader:search([{metric_name, MetricName},
+                            freya_reader:search([{name, MetricName},
                                                  {start_time, Ts},
                                                  {aggregate, {avg, {1, seconds}}},
                                                  {align, true}])
@@ -365,7 +365,8 @@ t_list_namespaces(_Config) ->
     ?th:keep_trying({ok, [DPIn]}, fun() ->
                                           {ok, Nss} = freya_reader:namespaces(),
                                           true = lists:member(Ns, Nss),
-                                          freya_reader:search([{metric_name, {Ns,Metric}},
+                                          freya_reader:search([{name, Metric},
+                                                               {ns, Ns},
                                                                {start_time, Ts}])
                                   end, 100, 200).
 
