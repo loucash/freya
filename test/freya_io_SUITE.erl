@@ -357,17 +357,27 @@ t_avg_aggregate_aligned(_Config) ->
 
 t_list_namespaces(_Config) ->
     {ok, Publisher} = freya_writer:publisher(),
-    Metric = ?th:randomize(<<"dummy">>),
+    Name = ?th:randomize(<<"dummy">>),
     Ns = ?th:randomize(<<"ns">>),
     Ts = tic:now_to_epoch_msecs(),
-    DPIn = freya_data_point:new({Ns,Metric}, Ts, 1),
+    DPIn = freya_data_point:new({Ns, Name}, Ts, 1),
     ok = freya_writer:save(Publisher, DPIn),
     ?th:keep_trying({ok, [DPIn]}, fun() ->
                                           {ok, Nss} = freya_reader:namespaces(),
                                           true = lists:member(Ns, Nss),
-                                          freya_reader:search([{name, Metric},
+                                          freya_reader:search([{name, Name},
                                                                {ns, Ns},
                                                                {start_time, Ts}])
                                   end, 100, 200).
 
-t_list_names(_) -> ok.
+t_list_names(_Config) ->
+    {ok, Publisher} = freya_writer:publisher(),
+    Name = ?th:randomize(<<"dummy">>),
+    Ns = ?th:randomize(<<"ns">>),
+    Ts = tic:now_to_epoch_msecs(),
+    DPIn = freya_data_point:new({Ns, Name}, Ts, 1),
+    ok = freya_writer:save(Publisher, DPIn),
+    ?th:keep_trying(true, fun() ->
+                                  {ok, Names} = freya_reader:metric_names(Ns),
+                                  lists:member(Name, Names)
+                          end, 100, 200).
