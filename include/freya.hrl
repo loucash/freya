@@ -19,6 +19,7 @@
           value            :: data_value(),
           meta             :: data_meta()
          }).
+
 -type data_point()      :: #data_point{}.
 -type data_tags()       :: proplists:proplist().
 -type data_type()       :: long | double.
