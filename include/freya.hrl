@@ -1,17 +1,23 @@
+-type metric_ns()       :: binary().
 -type metric_name()     :: binary().
+-type metric()          :: {metric_ns(), metric_name()}
+                         | metric_name().
 -type milliseconds()    :: non_neg_integer().
 -type ttl()             :: non_neg_integer().
 -type unit()            :: seconds | minutes | hours | days | weeks.
 -type aggregate()       :: avg | min | max | sum.
 -type precision()       :: {non_neg_integer(), unit()} | non_neg_integer().
 
+-define(DEFAULT_NS, <<"default">>).
+
 -record(data_point,{
-          name      :: metric_name(),
-          ts        :: milliseconds(),
-          type      :: data_type(),
-          tags = [] :: data_tags(),
-          value     :: data_value(),
-          meta      :: data_meta()
+          ns = ?DEFAULT_NS :: metric_ns(),
+          name             :: metric_name(),
+          ts               :: milliseconds(),
+          type             :: data_type(),
+          tags = []        :: data_tags(),
+          value            :: data_value(),
+          meta             :: data_meta()
          }).
 -type data_point()      :: #data_point{}.
 -type data_tags()       :: proplists:proplist().

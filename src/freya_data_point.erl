@@ -7,7 +7,7 @@
 
 -export([new/0, new/3, new/4, of_props/1]).
 -export([encode/1, encode/2, decode/3]).
--export([name/1, tags/1, ts/1, value/1]).
+-export([ns/1, name/1, tags/1, ts/1, value/1]).
 
 -include("freya.hrl").
 
@@ -20,27 +20,31 @@
 new() ->
     #data_point{}.
 
--spec new(metric_name(), milliseconds(), data_value()) -> data_point().
-new(MetricName, Ts, Value) ->
-    new(MetricName, Ts, Value, []).
+-spec new(metric(), milliseconds(), data_value()) -> data_point().
+new(Metric, Ts, Value) ->
+    new(Metric, Ts, Value, []).
 
--spec new(metric_name(), milliseconds(), data_value(), data_tags()) -> data_point().
-new(MetricName, Ts, Value, Tags) ->
-    new(MetricName, Ts, Value, Tags, []).
+-spec new(metric(), milliseconds(), data_value(), data_tags()) -> data_point().
+new(Metric, Ts, Value, Tags) ->
+    new(Metric, Ts, Value, Tags, []).
 
--spec new(metric_name(), milliseconds(), data_value(), data_tags(), data_meta()) -> data_point().
-new(MetricName, Ts, Value, Tags, _Meta) ->
-    #data_point{name        = MetricName,
-                ts          = Ts,
-                type        = type(Value),
-                value       = Value,
-                tags        = freya_utils:sanitize_tags(Tags)}.
+-spec new(metric(), milliseconds(), data_value(), data_tags(), data_meta()) -> data_point().
+new({Ns, Name}, Ts, Value, Tags, _Meta) ->
+    #data_point{ns    = Ns,
+                name  = Name,
+                ts    = Ts,
+                type  = type(Value),
+                value = Value,
+                tags  = freya_utils:sanitize_tags(Tags)};
+new(Name, Ts, Value, Tags, Meta) when is_binary(Name) ->
+    new(freya_utils:sanitize_name(Name), Ts, Value, Tags, Meta).
 
 -spec of_props(proplists:proplist()) -> data_point().
 of_props(Props) ->
     Get2 = fun proplists:get_value/2,
     Get3 = fun proplists:get_value/3,
     #data_point{
+       ns       = Get2(ns, Props),
        name     = Get2(name, Props),
        type     = Get2(type, Props),
        tags     = Get3(tags, Props, []),
@@ -51,6 +55,10 @@ of_props(Props) ->
 -spec name(data_point()) -> metric_name().
 name(#data_point{name=Name}) ->
     Name.
+
+-spec ns(data_point()) -> metric_ns().
+ns(#data_point{ns=Ns}) ->
+    Ns.
 
 -spec tags(data_point()) -> data_tags().
 tags(#data_point{tags=Tags}) ->
@@ -80,9 +88,9 @@ encode(DataPoint) ->
 
 -spec encode(data_point(), data_precision()) ->
     {ok, {binary(), binary(), binary()}}.
-encode(#data_point{name=MetricName, ts=Ts, type=DataType, tags=Tags, value=Value0},
+encode(#data_point{ns=Ns, name=Name, ts=Ts, type=DataType, tags=Tags, value=Value0},
        DataPrecision) ->
-    {ok, Row}       = ?blobs:encode_rowkey(MetricName, Ts, DataType, Tags, DataPrecision),
+    {ok, Row}       = ?blobs:encode_rowkey({Ns, Name}, Ts, DataType, Tags, DataPrecision),
     {ok, Timestamp} = ?blobs:encode_timestamp(Ts, DataPrecision),
     {ok, Value}     = ?blobs:encode_value(DataType, Value0),
     {ok, {Row, Timestamp, Value}}.
@@ -98,6 +106,7 @@ decode_rowkey(Bin0, DataPoint0) when is_binary(Bin0) ->
     case ?blobs:decode_rowkey(Bin0) of
         {ok, Props} ->
             {ok, {DataPoint0#data_point{
+                    ns       = Get2(ns, Props),
                     name     = Get2(name, Props),
                     type     = Get2(type, Props),
                     tags     = Get3(tags, Props, [])
