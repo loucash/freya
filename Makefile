@@ -11,7 +11,7 @@ CQLSH = cqlsh
 
 .PHONY: all build_plt compile configure console deps doc clean depclean distclean dialyze test test-console
 
-all: deps compile data/ring cassandra-freya kairosdb-ui
+all: deps compile data/ring cassandra-freya
 
 build_plt:
 	@dialyzer --build_plt --apps $(PLT_APPS)
@@ -72,11 +72,6 @@ dev-console:
 
 spam:
 	@erl -pa deps/*/ebin -pa ebin -config sys -s lager
-
-kairosdb-ui: priv/ui
-
-priv/ui:
-	@cd priv && curl -O http://mtod.org/ui.tar.gz && tar xzfv ui.tar.gz
 
 data/ring:
 	@rm -rf data/ring

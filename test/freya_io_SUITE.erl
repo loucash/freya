@@ -15,11 +15,7 @@
          t_avg_aggregate/1,
          t_avg_aggregate_aligned/1,
          t_start_end_time/1,
-         t_start_end_time_different_rowkeys/1,
-         t_tcp_version/1,
-         t_tcp_write/1,
-         t_rest_kairos_legacy_read_metric_names/1,
-         t_rest_kairos_legacy_query_dps/1]).
+         t_start_end_time_different_rowkeys/1]).
 
 -include_lib("freya/include/freya.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -45,10 +41,7 @@ all() ->
      t_sum_aggregate_aligned,
      t_sum_aggregate_aligned_different_types,
      t_avg_aggregate,
-     t_avg_aggregate_aligned,
-     t_tcp_version,
-     t_tcp_write,
-     t_rest_kairos_legacy_read_metric_names
+     t_avg_aggregate_aligned
     ].
 
 init_per_suite(Config) ->
@@ -376,56 +369,3 @@ t_avg_aggregate_aligned(_Config) ->
                                                  {align, true}])
                     end, 100, 200),
     meck:unload().
-
-t_tcp_version(_Config) ->
-    {ok, Client} = freya_tcp_client:start_link(),
-    {ok, Vsn} = freya:version(),
-    {ok, [[{<<"version">>, Vsn}]]} = freya_tcp_client:version(Client),
-    {ok, [[{<<"version">>, Vsn}]]} = freya_tcp_client:version(Client),
-    ok = freya_tcp_client:stop(Client).
-
-t_tcp_write(_Config) ->
-    {ok, Client} = freya_tcp_client:start_link(),
-    MetricName = ?th:randomize(<<"via_tcp">>),
-    Ts = tic:now_to_epoch_msecs(),
-    ok = freya_tcp_client:put_metric(Client, MetricName, Ts, 666.66),
-    DPIn = freya_data_point:new(MetricName, Ts, 666.66),
-    ?th:keep_trying({ok, [DPIn]}, fun() -> freya_reader:search(?CS_READ_POOL,
-                                                 [{metric_name, MetricName},
-                                                  {start_time, Ts}])
-                    end, 100, 200).
-
-t_rest_kairos_legacy_read_metric_names(_Config) ->
-    {ok, Client} = freya_tcp_client:start_link(),
-    MetricName = ?th:randomize(<<"read_via_http">>),
-    Ts = tic:now_to_epoch_msecs(),
-    ok = freya_tcp_client:put_metric(Client, MetricName, Ts, 666.66),
-    ok = freya_tcp_client:stop(Client),
-    MetricNames = fun() ->
-                          {ok, Payload} = kai_rest:list_metric_names(),
-                          R = kvlists:get_value(<<"results">>, Payload),
-                          lists:member(MetricName, R)
-                  end,
-    ?th:keep_trying(true, MetricNames, 100, 200).
-
-t_rest_kairos_legacy_query_dps(_Config) ->
-    {ok, Client} = freya_tcp_client:start_link(),
-    MetricName = ?th:randomize(<<"cpu_load">>),
-    Now = tic:now_to_epoch_msecs(),
-    [ begin
-          Ts = (Now - timer:seconds(Offset)),
-          ok = freya_tcp_client:put_metric(Client, MetricName, Ts, Offset)
-      end || Offset <- lists:seq(1, 10) ],
-    ok = freya_tcp_client:stop(Client),
-
-    Q0 = kai_q:new(Now - timer:seconds(10)),
-    Q1 = kai_q:metric(MetricName),
-    LegacyReq = kai_q:compose(Q0, Q1),
-
-    VerifyMetricsQuery = fun() ->
-                                 {ok, Qrys} = kai_rest:query_metrics(LegacyReq),
-                                 [[Res]] = kvlists:get_path([<<"queries">>,<<"results">>], Qrys),
-                                 (MetricName == kvlists:get_value(<<"name">>, Res))
-                                 andalso (10 == length(kvlists:get_value(<<"values">>, Res)))
-                         end,
-    ?th:keep_trying(true, VerifyMetricsQuery, 100, 200).
