@@ -65,14 +65,15 @@ t_query_metrics_start_time(_) ->
 
 t_query_metrics_with_tags(_) ->
     {Ns, [{N1,DPs1},{_,DPs2}]} = sample_metrics(<<"t_query_metrics_tags">>, {2,3}),
-    Tag1 = {<<"level">>,<<"og">>},
-    Tag2 = {<<"level">>,<<"boss">>},
-    Tag3 = {<<"street_cred">>,<<"fake">>},
-    ok = frik:put_metrics(Ns, [{N1,DPs1}], [Tag1,Tag3]),
-    ok = frik:put_metrics(Ns, [{N1,DPs2}], [Tag2,Tag3]),
+    Tag1 = {<<"level">>,<<":og;,">>},
+    Tag2 = {<<"level">>,<<"b:os,s">>},
+    Tag3 = {<<"street_cred">>,<<"!@#$%^&*()">>},
+    Tag4 = {<<"m:a:c,">>,<<"de:ad:be:ef:,">>},
+    ok = frik:put_metrics(Ns, [{N1,DPs1}], [Tag1,Tag3,Tag4]),
+    ok = frik:put_metrics(Ns, [{N1,DPs2}], [Tag2,Tag3,Tag4]),
     StartTime = tic:now_to_epoch_msecs() - timer:seconds(10),
     Assert = fun() ->
-                     Opts = [{start_time,StartTime},{tags,[Tag2]}],
+                     Opts = [{start_time,StartTime},{tags,[Tag2,Tag4]}],
                      frik:query_metrics(Ns,N1,Opts)
              end,
     ?th:keep_trying({ok,DPs2}, Assert, 100, 50),

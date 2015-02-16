@@ -89,11 +89,15 @@ to_relative_time(Q) ->
 to_kvlist(undefined) ->
     [];
 to_kvlist(Q) when is_binary(Q) ->
-    L = binary:split(Q, [<<",">>,<<":">>], [global]),
+    D = uridecode(Q),
+    L = binary:split(D, [<<",">>,<<":">>], [global]),
     to_kvlist2(L).
 
 to_kvlist2([]) -> [];
-to_kvlist2([K,V|T]) -> [{K,V}|to_kvlist2(T)].
+to_kvlist2([K,V|T]) -> [{uridecode(K),uridecode(V)}|to_kvlist2(T)].
+
+uridecode(X) ->
+    list_to_binary(http_uri:decode(binary_to_list(X))).
 
 -spec to_order(binary()) -> data_order().
 to_order(<<"asc">>) -> asc;
