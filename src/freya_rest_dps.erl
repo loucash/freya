@@ -62,10 +62,14 @@ init_state(R0) ->
 
 resource_exists(Req, State=#state{ns=Ns, name=Name, search_opts=Opts}) ->
     SearchOpts = [{ns,Ns},{name,Name}|Opts],
-    {ok, Result} = freya_reader:search(SearchOpts),
-    Dps = [ [freya_data_point:ts(Dp),
-             freya_data_point:value(Dp)] || Dp <- Result ],
-    {true, Req, State#state{data_points=Dps}}.
+    case freya_reader:search(SearchOpts) of
+        {ok, Result} ->
+            Dps = [ [freya_data_point:ts(Dp),
+                     freya_data_point:value(Dp)] || Dp <- Result ],
+            {true, Req, State#state{data_points=Dps}};
+        {error, not_found} ->
+            {false, Req, State}
+    end.
 
 -spec ts_or_relative(binary()) -> milliseconds().
 ts_or_relative(Q0) ->
