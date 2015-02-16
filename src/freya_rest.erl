@@ -2,7 +2,7 @@
 
 -export([start/0]).
 
--define(DEFAULT_PORT, 8080).
+-define(DEFAULT_PORT, freya:get_env(http_port, 8666)).
 -define(PFX, "/api/v1/").
 
 start() ->
