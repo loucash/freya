@@ -25,7 +25,7 @@
     {write_batch_size, 500},
     {raw_ttl, 86400},
     {max_aggregation_delay, 300},
-
+    {http_port, 8666},
     {cassandra_keyspace, <<"freya">>},
     {cassandra_read_consistency, quorum},
     {cassandra_write_consistency, quorum},
