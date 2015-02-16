@@ -85,8 +85,10 @@ to_relative_time(Q) ->
     [V, U] = binary:split(Q, <<",">>),
     {binary_to_integer(V), to_unit(U)}.
 
--spec to_kvlist(binary()) -> proplists:proplist().
-to_kvlist(Q) ->
+-spec to_kvlist(undefined | binary()) -> proplists:proplist().
+to_kvlist(undefined) ->
+    [];
+to_kvlist(Q) when is_binary(Q) ->
     L = binary:split(Q, [<<",">>,<<":">>], [global]),
     to_kvlist2(L).
 
