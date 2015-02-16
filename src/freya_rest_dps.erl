@@ -31,8 +31,8 @@ init_state(R0) ->
     Pipe = [ {start_time , fun ts_or_relative/1},
              {end_time   , fun ts_or_relative/1},
              {align      , fun to_bool/1},
-             {aggregator , fun to_aggregator/1},
-             {precision  , fun to_relative_time/1},
+             {aggregate  , fun to_aggregator/1},
+             {sampling   , fun to_relative_time/1},
              {tags       , fun to_kvlist/1},
              {order      , fun to_order/1} ], % TODO source
     Opts = lists:filtermap(
@@ -45,7 +45,20 @@ init_state(R0) ->
                              {true, {K, F(V)}}
                      end
              end, Pipe),
-    {#state{ns=Ns, name=Name, search_opts=Opts}, R3}.
+    AggDef = kvlists:get_values([aggregate,sampling], Opts),
+    SearchOpts = case AggDef of
+                     [undefined,undefined] ->
+                         Opts;
+                     [undefined,_] ->
+                         error(bad_aggregate);
+                     [_,undefined] ->
+                         error(bad_aggregate);
+                     [Aggr,Sampl] ->
+                         O1 = kvlists:delete_value(aggregate, Opts),
+                         O2 = kvlists:delete_value(sampling, O1),
+                         [{aggregate,{Aggr,Sampl}}|O2]
+                 end,
+    {#state{ns=Ns, name=Name, search_opts=SearchOpts}, R3}.
 
 resource_exists(Req, State=#state{ns=Ns, name=Name, search_opts=Opts}) ->
     SearchOpts = [{ns,Ns},{name,Name}|Opts],
