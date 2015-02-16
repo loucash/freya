@@ -56,11 +56,11 @@ allow_missing_post(Req, State) ->
     {true, Req, State}.
 
 render_msgpack(Req, State=#state{names=Names}) ->
-    Resp = msgpack:pack([{<<"names">>, Names}], [{format, jsx}]),
+    Resp = msgpack:pack(Names, [{format, jsx}]),
     {Resp, Req, State}.
 
 render_json(Req, State=#state{names=Names}) ->
-    Resp = jsx:encode([{<<"names">>,Names}]),
+    Resp = jsx:encode(Names),
     {Resp, Req, State}.
 
 put_dps_msgpack(R0, S0=#state{ns=Ns, payload=Body}) ->

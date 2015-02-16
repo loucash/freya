@@ -108,9 +108,9 @@ allowed_methods(Req, State) ->
     {[<<"GET">>], Req, State}.
 
 render_msgpack(Req, State=#state{data_points=Dps}) ->
-    Resp = msgpack:pack([{<<"points">>, Dps}], [{format, jsx}]),
+    Resp = msgpack:pack(Dps, [{format, jsx}]),
     {Resp, Req, State}.
 
 render_json(Req, State=#state{data_points=Dps}) ->
-    Resp = jsx:encode([{<<"points">>, Dps}]),
+    Resp = jsx:encode(Dps),
     {Resp, Req, State}.

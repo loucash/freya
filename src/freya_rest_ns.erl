@@ -31,9 +31,9 @@ resource_exists(Req, State) ->
     {true, Req, State#state{namespaces=Nss}}.
 
 render_msgpack(Req, State=#state{namespaces=Nss}) ->
-    Resp = msgpack:pack([{<<"namespaces">>, Nss}], [{format, jsx}]),
+    Resp = msgpack:pack(Nss, [{format, jsx}]),
     {Resp, Req, State}.
 
 render_json(Req, State=#state{namespaces=Nss}) ->
-    Resp = jsx:encode([{<<"namespaces">>, Nss}]),
+    Resp = jsx:encode(Nss),
     {Resp, Req, State}.
