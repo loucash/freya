@@ -75,8 +75,7 @@ put_metrics(Ns, Payload) ->
     Res = lists:filtermap(fun(M) ->
                                   Name = kvlists:get_value(<<"name">>, M),
                                   Points = kvlists:get_value(<<"points">>, M),
-                                  T0 = kvlists:get_value(<<"tags">>, M, []),
-                                  Tags = [ {K,V} || [{K,V}] <- T0 ],
+                                  Tags = kvlists:get_value(<<"tags">>, M, []),
                                   case save_dps(Name, Ns, Points, Tags) of
                                       [] ->
                                           false;
