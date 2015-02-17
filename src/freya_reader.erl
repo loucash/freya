@@ -107,10 +107,17 @@ namespaces() ->
 
 -spec namespaces(pool_name()) -> {ok, list()} | {error, any()}.
 namespaces(Pool) ->
-    with_pool(Pool, fun(Client) ->
+    case with_pool(Pool, fun(Client) ->
                             erlcql_client:execute(Client, ?SELECT_STRING_INDEX,
                                                   [?ROW_KEY_NAMESPACES], [read_consistency()])
-                    end).
+                    end) of
+        {ok, _}=Ok ->
+            Ok;
+        {error, not_found} ->
+            {ok, []};
+        {error, _}=Err ->
+            Err
+    end.
 
 %%%===================================================================
 %%% Internal

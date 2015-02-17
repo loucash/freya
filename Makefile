@@ -68,7 +68,7 @@ dev: compile-fast dev-console
 
 dev-clean: cassandra-freya dev
 
-dev-console:
+dev-console: compile-fast
 	$(ERL) -sname $(SNAME) $(EPATH) -s freya -config sys -config riak_core
 
 spam:
