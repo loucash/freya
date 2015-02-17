@@ -9,7 +9,7 @@ PLT_APPS = $(shell ls $(ERL_LIB_DIR) | grep -v interface | sed -e 's/-[0-9.]*//'
 DIALYZER_OPTS= -Wno_undefined_callbacks --fullpath
 CQLSH = cqlsh
 
-.PHONY: all build_plt compile configure console deps doc clean depclean distclean dialyze test test-console
+.PHONY: all build_plt compile configure console deps doc clean depclean distclean dialyze release test test-console
 
 all: deps compile data/ring cassandra-freya
 
@@ -81,15 +81,21 @@ data/ring:
 ct-single:
 	@mkdir -p ct_log
 	@if [ -z "$(suite)" ] || [ -z "$(case)" ]; then \
-	    echo "Provide args. e.g. suite=freya_io case=t_tcp_write"; exit 1; \
-	    else true; fi
+		echo "Provide args. e.g. suite=freya_io case=t_tcp_write"; exit 1; \
+		else true; fi
 	@ct_run -noshell -pa deps/*/ebin -pa ebin -include include -include src \
-	    -include deps/*/include -sname freya_test -logdir ct_log -ct_hooks cth_surefire \
+		-include deps/*/include -sname freya_test -logdir ct_log -ct_hooks cth_surefire \
 		-sasl sasl_error_logger false \
-	    -dir $(dir $(shell find . -name $(suite)_SUITE.erl)) -suite $(suite)_SUITE -case $(case)
+		-dir $(dir $(shell find . -name $(suite)_SUITE.erl)) -suite $(suite)_SUITE -case $(case)
 	@open ct_log/all_runs.html
 
 rel: all
+	@./relx -c rel/freya.config -o _build/release --overlay_vars=vars/deploy.config
+
+release:
+	deps
+	compile
+	data/ring
 	@./relx -c rel/freya.config -o _build/release --overlay_vars=vars/deploy.config
 
 relclean:
