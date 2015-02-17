@@ -92,10 +92,7 @@ ct-single:
 rel: all
 	@./relx -c rel/freya.config -o _build/release --overlay_vars=vars/deploy.config
 
-release:
-	deps
-	compile
-	data/ring
+release: deps compile data/ring
 	@./relx -c rel/freya.config -o _build/release --overlay_vars=vars/deploy.config
 
 relclean:
