@@ -2,6 +2,7 @@
 -behaviour(gen_server).
 
 -include("freya.hrl").
+-include("freya_metrics.hrl").
 
 %% API
 -export([push/5, push/6]).
@@ -32,6 +33,7 @@ push(Metric, Tags, Ts, Value, {_Fun, Precision}=Aggregate, MaxDelay) ->
         true ->
             do_push(Metric, Tags, Ts, Value, Aggregate);
         false ->
+            quintana:notify_spiral({?Q_EDGE_OUTDATED, 1}),
             {error, too_late}
     end.
 

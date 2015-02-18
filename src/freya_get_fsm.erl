@@ -1,6 +1,9 @@
 -module(freya_get_fsm).
 -behaviour(gen_fsm).
 
+-include("freya.hrl").
+-include("freya_metrics.hrl").
+
 %% API
 -export([get/4, get_async/4]).
 -export([start_link/6]).
@@ -26,17 +29,19 @@
                 responses = 0   :: non_neg_integer(),
                 replies = []    :: list(),
 
-                metric,
-                tags,
-                ts,
-                aggregate,
-                key,
+                metric          :: metric(),
+                tags            :: data_tags(),
+                ts              :: milliseconds(),
+                aggregate       :: data_precision(),
+                key             :: data_key(),
 
                 n               :: non_neg_integer(),
-                r               :: non_neg_integer()}).
+                r               :: non_neg_integer(),
+                lat_timer
+               }).
 
 -define(TIMEOUT, 5000).
--define(WAIT_TIMEOUT, 10000).
+-define(WAIT_TIMEOUT, 3000).
 
 %%%===================================================================
 %%% API
@@ -61,8 +66,10 @@ start_link(ReqId, From, Metric, Tags, Ts, Aggregate) ->
 init([ReqId, From, Metric, Tags, Ts, Aggregate]) ->
     {ok, N} = freya:get_env(n),
     {ok, R} = freya:get_env(r),
+    GetLatTimer = quintana:begin_timed(?Q_VNODE_GET_LAT),
     State = #state{req_id=ReqId, coordinator=node(), from=From, n=N, r=R,
-                   metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate},
+                   metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate,
+                   lat_timer=GetLatTimer},
     {ok, prepare, State, 0}.
 
 prepare(timeout, #state{metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate, n=N}=State) ->
@@ -75,16 +82,18 @@ prepare(timeout, #state{metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate, n=
 execute(timeout, #state{preflist=PrefList, req_id=ReqId, metric=Metric,
                         tags=Tags, ts=Ts, aggregate=Aggregate}=State) ->
     freya_stats_vnode:get(PrefList, ReqId, Metric, Tags, Ts, Aggregate),
-    {next_state, waiting, State}.
+    {next_state, waiting, State, ?WAIT_TIMEOUT}.
 
 waiting({ok, ReqId, IdxNode, Obj},
         #state{req_id=ReqId, from=From, responses=Resp0, replies=Replies0,
-               r=R, n=N}=State0) ->
+               r=R, n=N, lat_timer=GetLatTimer}=State0) ->
     Resp    = Resp0 + 1,
     Replies = [{IdxNode, Obj}|Replies0],
     State   = State0#state{responses=Resp, replies=Replies},
     case Resp =:= R of
         true ->
+            quintana:notify_timed(GetLatTimer),
+            quintana:notify_spiral({?Q_VNODE_GET_OK, 1}),
             Reply = merge(Replies),
             case Reply of
                 not_found ->
@@ -103,7 +112,7 @@ waiting({ok, ReqId, IdxNode, Obj},
     end;
 
 waiting(timeout, State) ->
-    % todo: partial repair?
+    quintana:notify_spiral({?Q_VNODE_GET_TIMEOUT, 1}),
     {stop, normal, State}.
 
 wait_for_n({ok, _ReqId, IdxNode, Obj}, #state{responses=Resp0, replies=Replies0,
@@ -119,7 +128,6 @@ wait_for_n({ok, _ReqId, IdxNode, Obj}, #state{responses=Resp0, replies=Replies0,
     end;
 
 wait_for_n(timeout, State) ->
-    % todo: partial repair?
     {stop, normal, State}.
 
 finalize(timeout, #state{replies=Replies, key=Key}=State) ->

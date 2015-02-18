@@ -3,6 +3,7 @@
 
 -include("freya.hrl").
 -include("freya_object.hrl").
+-include("freya_metrics.hrl").
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
 -export([push/7,
@@ -26,7 +27,7 @@
          handle_exit/3,
          handle_info/2]).
 
--record(state, {idx,
+-record(state, {idx             :: partition(),
                 node            :: node(),
                 stats_table     :: ets:tid(),
                 dispatch_table  :: ets:tid()
@@ -91,17 +92,14 @@ handle_command({push, {ReqId, Coordinator}, Metric, Tags, Ts, AggrSt, Aggregate}
     Key = freya_utils:aggregate_key(Metric, Tags, Ts, Aggregate),
     Val = #val{value  = proplists:get_value(value, AggrSt),
                points = proplists:get_value(points, AggrSt)},
-    Obj = case stats_find(Key, StatsTid) of
-              {ok, Obj0} ->
-                  snapshot_update_obj(
-                    freya_object:update(Coordinator, Val, Obj0),
-                    DispatchTid);
-              {error, not_found} ->
-                  snapshot_new_obj(
-                    freya_object:new(Coordinator, Metric, Tags, Ts, Aggregate, Val),
-                    DispatchTid)
-          end,
-    ok = stats_store(Obj, StatsTid),
+    case stats_find(Key, StatsTid) of
+        {ok, Obj0} ->
+            ok = stats_update(freya_object:update(Coordinator, Val, Obj0),
+                              StatsTid, DispatchTid);
+        {error, not_found} ->
+            ok = stats_new(freya_object:new(Coordinator, Metric, Tags, Ts, Aggregate, Val),
+                           StatsTid, DispatchTid)
+    end,
     {reply, {ok, ReqId}, State};
 
 handle_command({get, ReqId, Metric, Tags, Ts, Aggregate}, _Sender,
@@ -117,25 +115,21 @@ handle_command({get, ReqId, Metric, Tags, Ts, Aggregate}, _Sender,
 
 handle_command({repair, Key, Obj0}, _Sender, #state{stats_table=StatsTid,
                                                     dispatch_table=DispatchTid}=State) ->
-    Obj = case stats_find(Key, StatsTid) of
-              {ok, Obj1} ->
-                  snapshot_update_obj(
-                    freya_object:merge([Obj0, Obj1]),
-                    DispatchTid);
-              {error, not_found} ->
-                  snapshot_new_obj(Obj0, DispatchTid)
-          end,
-    ok = stats_store(Obj, StatsTid),
+    case stats_find(Key, StatsTid) of
+        {ok, Obj1} ->
+            ok = stats_update(freya_object:merge([Obj0, Obj1]),
+                              StatsTid, DispatchTid);
+        {error, not_found} ->
+            ok = stats_new(Obj0, StatsTid, DispatchTid)
+    end,
     {noreply, State};
 
 handle_command({checkpoint, Key, VClock}, _Sender, #state{stats_table=StatsTid,
                                                           dispatch_table=DispatchTid}=State) ->
     case stats_find(Key, StatsTid) of
         {ok, Obj0} ->
-            Obj = snapshot_update_obj(
-                    freya_object:update_cass_vclock(Obj0, VClock),
-                    DispatchTid),
-            ok = stats_store(Obj, StatsTid),
+            ok = stats_update(freya_object:update_cass_vclock(Obj0, VClock),
+                              StatsTid, DispatchTid),
             {noreply, State};
         {error, not_found} ->
             {noreply, State}
@@ -165,15 +159,13 @@ handoff_finished(_TargetNode, State) ->
 handle_handoff_data(Data, #state{stats_table=StatsTid,
                                  dispatch_table=DispatchTid}=State) ->
     {Key, Obj0} = binary_to_term(Data),
-    Obj = case stats_find(Key, StatsTid) of
-              {ok, Obj1} ->
-                  freya_object:merge([Obj0, Obj1]);
-              {error, not_found} ->
-                  schedule_delete(Obj0, DispatchTid),
-                  Obj0
-          end,
-    ok = stats_store(Obj, StatsTid),
-    ok = maybe_schedule_snapshot(Obj, DispatchTid),
+    case stats_find(Key, StatsTid) of
+        {ok, Obj1} ->
+            ok = stats_update(freya_object:merge([Obj0, Obj1]),
+                              StatsTid, DispatchTid);
+        {error, not_found} ->
+            ok = stats_new(Obj0, StatsTid, DispatchTid)
+    end,
     {reply, ok, State}.
 
 encode_handoff_item(Key, Obj) ->
@@ -211,11 +203,21 @@ stats_find(Key, StatsTid) ->
 stats_delete(Key, StatsTid) ->
     case stats_find(Key, StatsTid) of
         {ok, _} ->
+            quintana:notify_counter({?Q_VNODE_IN_MEMORY, {dec, 1}}),
             ets:delete(StatsTid, Key),
             ok;
         {error, not_found} ->
             ok
     end.
+
+stats_new(Obj0, StatsTid, DispatchTid) ->
+    quintana:notify_counter({?Q_VNODE_IN_MEMORY, {inc, 1}}),
+    Obj = snapshot_new_obj(Obj0, DispatchTid),
+    stats_store(Obj, StatsTid).
+
+stats_update(Obj0, StatsTid, DispatchTid) ->
+    Obj = snapshot_update_obj(Obj0, DispatchTid),
+    stats_store(Obj, StatsTid).
 
 stats_store(Obj, StatsTid) ->
     true = ets:insert(StatsTid, Obj),
@@ -258,7 +260,8 @@ next_update() ->
 schedule_delete(#freya_object{key=Key}=Obj, DispatchTid) ->
     DeleteAt = next_delete(Obj),
     ets:insert_new(DispatchTid,
-                   {{delete, Key}, freya_object:vclocks_diverged(Obj), DeleteAt}).
+                   {{delete, Key}, freya_object:vclocks_diverged(Obj), DeleteAt}),
+    Obj.
 
 next_delete(#freya_object{ts=Ts, precision=Precision}) ->
     next_delete(Ts, Precision).

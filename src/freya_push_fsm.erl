@@ -1,6 +1,8 @@
 -module(freya_push_fsm).
-
 -behaviour(gen_fsm).
+
+-include("freya.hrl").
+-include("freya_metrics.hrl").
 
 %% API
 -export([push/5]).
@@ -24,16 +26,19 @@
                 preflist        :: riak_core_apl:preflist2(),
                 responses = 0   :: non_neg_integer(),
 
-                metric,
-                tags,
-                ts,
-                value,
-                aggregate,
+                metric          :: metric(),
+                tags            :: data_tags(),
+                ts              :: milliseconds(),
+                value           :: any(),
+                aggregate       :: data_precision(),
 
                 n               :: non_neg_integer(),
-                w               :: non_neg_integer()}).
+                w               :: non_neg_integer(),
+                lat_timer
+               }).
 
 -define(TIMEOUT, 5000).
+-define(WAIT_TIMEOUT, 3000).
 
 %%%===================================================================
 %%% API
@@ -55,9 +60,10 @@ start_link(ReqId, From, Metric, Tags, Ts, Value, Aggregate) ->
 init([ReqId, From, Metric, Tags, Ts, Value, Aggregate]) ->
     {ok, N} = freya:get_env(n),
     {ok, W} = freya:get_env(w),
+    PushLatTimer = quintana:begin_timed(?Q_VNODE_PUSH_LAT),
     State = #state{req_id=ReqId, coordinator=node(), from=From, n=N, w=W,
                    metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate,
-                   value=Value},
+                   value=Value, lat_timer=PushLatTimer},
     {ok, prepare, State, 0}.
 
 prepare(timeout, #state{metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate, n=N}=State) ->
@@ -71,18 +77,25 @@ execute(timeout, #state{preflist=PrefList, req_id=ReqId, coordinator=Coordinator
                         aggregate=Aggregate}=State) ->
     freya_stats_vnode:push(PrefList, {ReqId, Coordinator},
                            Metric, Tags, Ts, Value, Aggregate),
-    {next_state, waiting, State}.
+    {next_state, waiting, State, ?WAIT_TIMEOUT}.
 
-waiting({ok, ReqId}, #state{req_id=ReqId, from=From, responses=Resp0, w=W}=State0) ->
+waiting({ok, ReqId}, #state{req_id=ReqId, from=From, responses=Resp0, w=W,
+                            lat_timer=PushLatTimer}=State0) ->
     Resp = Resp0 + 1,
     State = State0#state{responses=Resp},
     case Resp =:= W of
         true ->
+            quintana:notify_timed(PushLatTimer),
+            quintana:notify_spiral({?Q_VNODE_PUSH_OK, 1}),
             From ! {ok, ReqId},
             {stop, normal, State};
         false ->
-            {next_state, waiting, State}
-    end.
+            {next_state, waiting, State, ?WAIT_TIMEOUT}
+    end;
+
+waiting(timeout, State) ->
+    quintana:notify_spiral({?Q_VNODE_PUSH_TIMEOUT, 1}),
+    {stop, normal, State}.
 
 handle_event(_Event, _StateName, State) ->
     {stop, badmsg, State}.

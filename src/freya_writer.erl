@@ -92,12 +92,10 @@ handle_cast(_Msg, State) ->
 
 handle_info({mail, _, Queries0, _}, #state{write_delay=WriteDelay,
                                            subscriber=Subscriber}=State) ->
-    T = quintana:begin_timed(?Q_WRITER_BATCH),
     Queries = lists:flatten(Queries0),
     batch(Queries),
     Timer = erlang:send_after(WriteDelay, self(), flush_buffer_timeout),
     eqm_sub:notify_full(Subscriber),
-    quintana:notify_timed(T),
     {noreply, State#state{timer=Timer}};
 handle_info({mail, _, buffer_full}, #state{timer=TimerRef,
                                            subscriber=Subscriber}=State) ->
@@ -125,10 +123,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 batch(Queries) ->
+    T = quintana:begin_timed(?Q_WRITER_BATCH),
     {ok, {_, Worker}=Resource} = erlcql_cluster:checkout(?CS_WRITE_POOL),
     Client = erlcql_cluster_worker:get_client(Worker),
     Res = erlcql_client:batch(Client, Queries, [consistency()]),
     erlcql_cluster:checkin(Resource),
+    quintana:notify_timed(T),
     case Res of
         {ok, _} ->
             ok;

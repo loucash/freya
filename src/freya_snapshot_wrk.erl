@@ -2,6 +2,7 @@
 -behaviour(gen_fsm).
 
 -include("freya.hrl").
+-include("freya_metrics.hrl").
 
 %% API
 -export([start_link/4]).
@@ -26,7 +27,8 @@
           aggregate,
           ttl,
           req_id,
-          obj
+          obj,
+          lat_timer
          }).
 
 -define(DEFAULT_TIMEOUT, 10000).
@@ -42,8 +44,9 @@ start_link(Metric, Tags, Ts, Aggregate) ->
 %%%===================================================================
 init([Metric, Tags, Ts, {Fun, Precision}]) ->
     TTL = infinity, % TODO: pass ttl from the edge or take it from config
+    SnapshotTimer = quintana:begin_timed(?Q_VNODE_SNAPSHOT_LATENCY),
     State = #state{metric=Metric, tags=Tags, ts=Ts,
-                   aggregate={Fun, Precision}, ttl=TTL},
+                   aggregate={Fun, Precision}, ttl=TTL, lat_timer=SnapshotTimer},
     {ok, execute, State, 0}.
 
 execute(timeout, #state{metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate}=State) ->
@@ -83,7 +86,8 @@ handle_sync_event(_Event, _From, _StateName, State) ->
 handle_info(Info, StateName, State) ->
     ?MODULE:StateName(Info, State).
 
-terminate(_Reason, _StateName, _State) ->
+terminate(_Reason, _StateName, #state{lat_timer=SnapshotTimer}) ->
+    quintana:notify_timed(SnapshotTimer),
     ok.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
