@@ -16,18 +16,8 @@ start(_StartType, _StartArgs) ->
     ok = freya_rest:start(),
     case freya_sup:start_link() of
         {ok, Pid} ->
-            ok = riak_core:register([{vnode_module, freya_vnode}]),
-            ok = riak_core_node_watcher:service_up(freya, self()),
-
             ok = riak_core:register([{vnode_module, freya_stats_vnode}]),
             ok = riak_core_node_watcher:service_up(freya_stats, self()),
-
-            ok = riak_core_ring_events:add_guarded_handler(
-                   freya_ring_event_handler, []),
-
-            ok = riak_core_node_watcher_events:add_guarded_handler(
-                   freya_node_event_handler, []),
-
             {ok, Pid};
         {error, _} = Error ->
             Error
