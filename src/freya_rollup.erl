@@ -2,6 +2,7 @@
 -behaviour(gen_server).
 
 -include("freya.hrl").
+-include("freya_metrics.hrl").
 
 %% API
 -export([push/5, push/6]).
@@ -17,6 +18,8 @@
 
 -record(state, {}).
 
+-define(ROLLUP_GROUP(Key), {rollup, Key}).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -30,6 +33,7 @@ push(Metric, Tags, Ts, Value, {_Fun, Precision}=Aggregate, MaxDelay) ->
         true ->
             do_push(Metric, Tags, Ts, Value, Aggregate);
         false ->
+            quintana:notify_spiral({?Q_EDGE_OUTDATED, 1}),
             {error, too_late}
     end.
 
@@ -47,7 +51,7 @@ init([]) ->
     {ok, #state{}}.
 
 handle_call({create, Metric, Tags, Ts, Aggregate}, _From, State) ->
-    Key = freya_utils:aggregate_key(Metric, Tags, Ts, Aggregate),
+    Key = ?ROLLUP_GROUP(freya_utils:aggregate_key(Metric, Tags, Ts, Aggregate)),
     case find_worker_process(Key) of
         {ok, _} = Ok ->
             {reply, Ok, State};
@@ -84,7 +88,9 @@ can_aggregate(Ts, Precision, MaxDelay) ->
 do_push(Metric, Tags, Ts, Value, {_Fun, Precision}=Aggregate) ->
     AlignedTs       = freya_utils:floor(Ts, Precision),
     SanitizedTags   = freya_utils:sanitize_tags(Tags),
-    Key             = freya_utils:aggregate_key(Metric, SanitizedTags, AlignedTs, Aggregate),
+    Key             = ?ROLLUP_GROUP(
+                         freya_utils:aggregate_key(Metric, SanitizedTags,
+                                                   AlignedTs, Aggregate)),
     {ok, Pid} = case find_worker_process(Key) of
                     {ok, _} = Ok ->
                         Ok;

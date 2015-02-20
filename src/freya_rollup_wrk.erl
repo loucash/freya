@@ -1,6 +1,8 @@
 -module(freya_rollup_wrk).
 -behaviour(gen_fsm).
 
+-include("freya_metrics.hrl").
+
 %% API
 -export([push/2]).
 -export([start_link/4]).
@@ -49,6 +51,7 @@ init([Metric, Tags, Ts, {Fun, Precision}]) ->
     State = #state{metric=Metric, tags=Tags, ts=Ts,
                    aggregate={Fun, Precision},
                    aggregator_fun=aggregator(Fun)},
+    quintana:notify_counter({?Q_EDGE_ROLLUP_PROCS, {inc, 1}}),
     {ok, inactive, State, ?SHUTDOWN_TIMEOUT}.
 
 inactive({push, _}=Msg, State) ->
@@ -80,6 +83,7 @@ handle_info(Info, StateName, State) ->
     ?MODULE:StateName(Info, State).
 
 terminate(_Reason, _StateName, _State) ->
+    quintana:notify_counter({?Q_EDGE_ROLLUP_PROCS, {dec, 1}}),
     ok.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
@@ -99,10 +103,10 @@ aggregator(Fun) ->
     {Count, EmitCount} = freya_utils:aggregator_funs(count),
     Get                = fun proplists:get_value/2,
     fun({push, Value}, AggrSt) when is_list(AggrSt) ->
-            [{Fun,      Accumulate(Value, Get(Fun,    AggrSt))},
+            [{value,    Accumulate(Value, Get(value,    AggrSt))},
              {points,   Count(            Get(points, AggrSt))}];
        (emit, []) -> [];
        (emit, AggrSt) ->
-            [{Fun,      Emit(       Get(Fun,    AggrSt))},
+            [{value,    Emit(       Get(value,    AggrSt))},
              {points,   EmitCount(  Get(points, AggrSt))}]
     end.

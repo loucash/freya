@@ -1,4 +1,4 @@
--module(freya_rollup_topsup).
+-module(freya_snapshot_topsup).
 
 -behaviour(supervisor).
 
@@ -20,11 +20,11 @@ start_link() ->
 %%%===================================================================
 
 init([]) ->
-    Router = {freya_rollup,
-              {freya_rollup, start_link, []},
-              permanent, infinity, worker, [freya_rollup]},
-    Workers = {freya_rollup_sup,
-               {freya_rollup_sup, start_link, []},
-               permanent, infinity, supervisor, [freya_rollup_sup]},
+    Router = {freya_snapshot,
+              {freya_snapshot, start_link, []},
+              permanent, infinity, worker, [freya_snapshot]},
+    Workers = {freya_snapshot_sup,
+               {freya_snapshot_sup, start_link, []},
+               permanent, infinity, supervisor, [freya_snapshot_sup]},
     {ok, {{rest_for_one, 10, 10},
           [Router, Workers]}}.

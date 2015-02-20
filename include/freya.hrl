@@ -28,6 +28,7 @@
 -type data_precision()  :: raw | {aggregate(), precision()}.
 -type data_meta()       :: [{ttl, non_neg_integer() | infinity} |
                             {precision, data_precision()}].
+-type data_key()        :: tuple().
 
 -define(AGGREGATES, [avg, min, max, sum]).
 -define(UNITS, [seconds, minutes, hours, days, weeks, months, years]).
