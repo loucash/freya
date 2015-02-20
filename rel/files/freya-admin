@@ -4,7 +4,7 @@ RUNNER_SCRIPT_DIR=$(cd ${0%/*} && pwd)
 RUNNER_SCRIPT=${0##*/}
 
 RUNNER_BASE_DIR=${RUNNER_SCRIPT_DIR%/*}
-RUNNER_ETC_DIR=$RUNNER_BASE_DIR/etc
+RUNNER_ETC_DIR=$RUNNER_BASE_DIR/releases/{{rel_vsn}}
 RUNNER_LOG_DIR=$RUNNER_BASE_DIR/log
 RUNNER_USER=
 
@@ -54,13 +54,8 @@ fi
 # Identify the script name
 SCRIPT=`basename $0`
 
-# Parse out release and erts info
-START_ERL=`cat $RUNNER_BASE_DIR/releases/start_erl.data`
-ERTS_VSN=${START_ERL% *}
-APP_VSN=${START_ERL#* }
-
 # Add ERTS bin dir to our path
-ERTS_PATH=$RUNNER_BASE_DIR/erts-$ERTS_VSN/bin
+ERTS_PATH=$RUNNER_BASE_DIR/erts-{{erts_vsn}}/bin
 
 # Setup command to control the node
 NODETOOL="$ERTS_PATH/escript $ERTS_PATH/nodetool $NAME_ARG $COOKIE_ARG"
@@ -89,7 +84,7 @@ case "$1" in
         fi
 
         shift
-        $NODETOOL rpc freya__console leave $@
+        $NODETOOL rpc freya_console leave $@
         ;;
 
     remove)
