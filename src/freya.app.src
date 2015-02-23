@@ -4,6 +4,7 @@
  {registered, []},
  {applications, [stdlib,
                  kernel,
+                 inets,
                  lager,
                  ranch,
                  erlcql_cluster,

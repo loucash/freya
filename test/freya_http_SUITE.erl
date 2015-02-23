@@ -2,6 +2,7 @@
 -compile([export_all]).
 
 -define(th, test_helpers).
+-define(URL(Endpoint), "http://localhost:8666/api/v1/" ++ Endpoint).
 
 suite() ->
     [{timetrap, {seconds, 40}}].
@@ -10,7 +11,8 @@ all() -> [t_list_namespaces,
           t_list_metricnames,
           t_query_metrics_start_time,
           t_query_metrics_with_tags,
-          t_query_aggregate].
+          t_query_aggregate,
+          t_health].
 
 init_per_suite(Config) ->
     ?th:setup_env(),
@@ -94,4 +96,13 @@ t_query_aggregate(_) ->
                      {sum, Sum}
              end,
     ?th:keep_trying({sum,55}, Assert, 100, 50),
+    ok.
+
+t_health(_) ->
+    {ok, Result} = httpc:request(get, {?URL("health"), []}, [], []),
+    {{_Version, HttpStatusCode, _Reason}, _Headers, Body} = Result,
+    200 = HttpStatusCode,
+    BodyBin = list_to_binary(Body),
+    Json = jsx:decode(BodyBin),
+    [{<<"version">>, _}, {<<"build_date">>, _}] = Json,
     ok.

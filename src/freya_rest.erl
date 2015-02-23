@@ -3,10 +3,11 @@
 -export([start/0]).
 
 -define(DEFAULT_PORT, freya:get_env(http_port, 8666)).
--define(PFX, "/api/v1/").
+-define(PFX, "/api/v1").
 
 start() ->
-    Routes = [{?PFX++"/metrics/ns", freya_rest_ns, []},
+    Routes = [{?PFX++"/health", freya_rest_health, []},
+              {?PFX++"/metrics/ns", freya_rest_ns, []},
               {?PFX++"/metrics/ns/:ns", freya_rest_names, []},
               {?PFX++"/metrics/ns/:ns/:metric_name", freya_rest_dps, []}],
 
