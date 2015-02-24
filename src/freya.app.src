@@ -4,6 +4,7 @@
  {registered, []},
  {applications, [stdlib,
                  kernel,
+                 inets,
                  lager,
                  ranch,
                  erlcql_cluster,
@@ -17,9 +18,13 @@
                  riak_core,
                  cowboy,
                  jsx,
-                 riak_governor]},
+                 riak_governor,
+                 hope]},
  {mod, {freya_app, []}},
  {env, [
+    {http_basic_auth_user, <<"test_user">>},
+    {http_basic_auth_pass, <<"test_pass">>},
+
     {writers_size, 1000},
     {write_delay, 800},
     {read_row_size, 10240},

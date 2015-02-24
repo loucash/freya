@@ -2,6 +2,9 @@
 -compile([export_all]).
 
 -define(th, test_helpers).
+-define(API(Endpoint), "http://localhost:8666/api/v1/" ++ Endpoint).
+-define(ADMIN(Endpoint), "http://localhost:8666/api/v1/admin/node/" ++ Endpoint).
+-define(DEFAULT_BASIC_AUTH, {"Authorization", "Basic dGVzdF91c2VyOnRlc3RfcGFzcw=="}).
 
 suite() ->
     [{timetrap, {seconds, 40}}].
@@ -10,7 +13,12 @@ all() -> [t_list_namespaces,
           t_list_metricnames,
           t_query_metrics_start_time,
           t_query_metrics_with_tags,
-          t_query_aggregate].
+          t_query_aggregate,
+
+          t_health,
+          t_admin_node_status,
+          t_admin_node_leave,
+          t_admin_node_join].
 
 init_per_suite(Config) ->
     ?th:setup_env(),
@@ -40,7 +48,7 @@ t_list_namespaces(_) ->
     ok = frik:put_metrics(Ns, Metrics),
     Assert = fun() ->
                      {ok,Nss} = frik:list_namespaces(),
-                     lists:member(Ns,Nss) 
+                     lists:member(Ns,Nss)
              end,
     ?th:keep_trying(true, Assert, 100, 50),
     ok.
@@ -50,7 +58,7 @@ t_list_metricnames(_) ->
     ok = frik:put_metrics(Ns, Metrics),
     Assert = fun() ->
                      {ok,Names} = frik:list_metric_names(Ns),
-                     lists:member(N1,Names) 
+                     lists:member(N1,Names)
              end,
     ?th:keep_trying(true, Assert, 100, 50),
     ok.
@@ -94,4 +102,43 @@ t_query_aggregate(_) ->
                      {sum, Sum}
              end,
     ?th:keep_trying({sum,55}, Assert, 100, 50),
+    ok.
+
+t_health(_) ->
+    {ok, Result} = httpc:request(get, {?API("health"), []}, [], []),
+    {{_Version, HttpStatusCode, _Reason}, _Headers, Body} = Result,
+    200 = HttpStatusCode,
+    BodyBin = list_to_binary(Body),
+    Json = jsx:decode(BodyBin),
+    [{<<"version">>, _}, {<<"build_date">>, _}] = Json,
+    ok.
+
+t_admin_node_status(_) ->
+    {ok, Result} = httpc:request(get, {?ADMIN("status"), [?DEFAULT_BASIC_AUTH]}, [], []),
+    {{_Version, HttpStatusCode, _Reason}, _Headers, Body} = Result,
+    200 = HttpStatusCode,
+    BodyBin = list_to_binary(Body),
+    Json = jsx:decode(BodyBin),
+    [{<<"status">>, <<"valid">>}] = Json,
+    ok.
+
+t_admin_node_leave(_) ->
+    {ok, Result} = httpc:request(post, {?ADMIN("leave"), [?DEFAULT_BASIC_AUTH], "application/json", ""},
+                                 [], []),
+    {{_Version, HttpStatusCode, _Reason}, _Headers, Body} = Result,
+    503 = HttpStatusCode,
+    BodyBin = list_to_binary(Body),
+    Json = jsx:decode(BodyBin),
+    [{<<"error">>, <<"only_member">>}] = Json,
+    ok.
+
+t_admin_node_join(_) ->
+    ReqBody = binary_to_list(jsx:encode([{<<"node">>, <<"somefakenode">>}])),
+    {ok, Result} = httpc:request(post, {?ADMIN("join"), [?DEFAULT_BASIC_AUTH], "application/json", ReqBody},
+                                 [], []),
+    {{_Version, HttpStatusCode, _Reason}, _Headers, Body} = Result,
+    503 = HttpStatusCode,
+    BodyBin = list_to_binary(Body),
+    Json = jsx:decode(BodyBin),
+    [{<<"error">>, <<"not_reachable">>}] = Json,
     ok.
