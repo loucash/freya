@@ -4,6 +4,7 @@
 -define(th, test_helpers).
 -define(API(Endpoint), "http://localhost:8666/api/v1/" ++ Endpoint).
 -define(ADMIN(Endpoint), "http://localhost:8666/api/v1/admin/node/" ++ Endpoint).
+-define(DEFAULT_BASIC_AUTH, {"Authorization", "Basic dGVzdF91c2VyOnRlc3RfcGFzcw=="}).
 
 suite() ->
     [{timetrap, {seconds, 40}}].
@@ -113,7 +114,7 @@ t_health(_) ->
     ok.
 
 t_admin_node_status(_) ->
-    {ok, Result} = httpc:request(get, {?ADMIN("status"), []}, [], []),
+    {ok, Result} = httpc:request(get, {?ADMIN("status"), [?DEFAULT_BASIC_AUTH]}, [], []),
     {{_Version, HttpStatusCode, _Reason}, _Headers, Body} = Result,
     200 = HttpStatusCode,
     BodyBin = list_to_binary(Body),
@@ -122,7 +123,7 @@ t_admin_node_status(_) ->
     ok.
 
 t_admin_node_leave(_) ->
-    {ok, Result} = httpc:request(post, {?ADMIN("leave"), [], "application/json", ""},
+    {ok, Result} = httpc:request(post, {?ADMIN("leave"), [?DEFAULT_BASIC_AUTH], "application/json", ""},
                                  [], []),
     {{_Version, HttpStatusCode, _Reason}, _Headers, Body} = Result,
     503 = HttpStatusCode,
@@ -133,7 +134,7 @@ t_admin_node_leave(_) ->
 
 t_admin_node_join(_) ->
     ReqBody = binary_to_list(jsx:encode([{<<"node">>, <<"somefakenode">>}])),
-    {ok, Result} = httpc:request(post, {?ADMIN("join"), [], "application/json", ReqBody},
+    {ok, Result} = httpc:request(post, {?ADMIN("join"), [?DEFAULT_BASIC_AUTH], "application/json", ReqBody},
                                  [], []),
     {{_Version, HttpStatusCode, _Reason}, _Headers, Body} = Result,
     503 = HttpStatusCode,

@@ -13,7 +13,7 @@
           node      :: binary()
          }).
 
-init(_Transport, _Req, []) ->
+init(_Transport, _Req, _Opts) ->
     {upgrade, protocol, cowboy_rest}.
 
 rest_init(R0, _Opts) ->
