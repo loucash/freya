@@ -6,10 +6,14 @@
 -define(PFX, "/api/v1").
 
 start() ->
-    Routes = [{?PFX++"/health", freya_rest_health, []},
+    Routes = [
               {?PFX++"/metrics/ns", freya_rest_ns, []},
               {?PFX++"/metrics/ns/:ns", freya_rest_names, []},
-              {?PFX++"/metrics/ns/:ns/:metric_name", freya_rest_dps, []}],
+              {?PFX++"/metrics/ns/:ns/:metric_name", freya_rest_dps, []},
+
+              {?PFX++"/health", freya_rest_health, []},
+              {?PFX++"/admin/node/:cmd", freya_rest_admin_node, []}
+             ],
 
     Dispatch = cowboy_router:compile([ {'_', Routes} ]),
     Port = freya:get_env(rest_port, ?DEFAULT_PORT),

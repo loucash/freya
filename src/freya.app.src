@@ -18,7 +18,8 @@
                  riak_core,
                  cowboy,
                  jsx,
-                 riak_governor]},
+                 riak_governor,
+                 hope]},
  {mod, {freya_app, []}},
  {env, [
     {writers_size, 1000},

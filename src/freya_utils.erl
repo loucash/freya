@@ -9,6 +9,9 @@
 -export([row_width/1]).
 -export([wait_for_reqid/2]).
 -export([pmap/3, pmap/4]).
+-export([ring_member_status/0,
+         ring_member_status/1,
+         ring_pending_claim_percentage/2]).
 
 -spec floor(milliseconds(), precision() | milliseconds()) ->
     milliseconds().
@@ -157,3 +160,29 @@ wait_for_reqid(ReqId, Timeout) ->
     after Timeout ->
               {error, timeout}
     end.
+
+ring_member_status() ->
+    ring_member_status(node()).
+
+ring_member_status(Node) ->
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    case riak_core_ring:member_status(Ring, Node) of
+        leaving ->
+            {ok, {leaving, ring_pending_claim_percentage(Ring, Node)}};
+        valid ->
+            case ring_pending_claim_percentage(Ring, Node) of
+                100.0 ->
+                    {ok, valid};
+                PercentDone ->
+                    {ok, {valid, PercentDone}}
+            end;
+        invalid ->
+            {error, invalid};
+        Status ->
+            {ok, Status}
+    end.
+
+ring_pending_claim_percentage(Ring, Node) ->
+    {RingPercent, NextPercent} = riak_core_console:pending_claim_percentage(Ring, Node),
+    PercentDone = 100.0 - abs(NextPercent - RingPercent),
+    PercentDone.
