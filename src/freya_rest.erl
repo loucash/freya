@@ -2,7 +2,7 @@
 
 -export([start/0]).
 
--define(DEFAULT_PORT, freya:get_env(http_port, 8666)).
+-define(DEFAULT_PORT, 8666).
 -define(PFX, "/api/v1").
 
 start() ->
@@ -23,7 +23,7 @@ start() ->
     Middlewares = [cowboy_router,
                    cows_basic_auth_middleware,
                    cowboy_handler],
-    Port = freya:get_env(rest_port, ?DEFAULT_PORT),
+    Port = freya:get_env(http_port, ?DEFAULT_PORT),
     {ok, _} = cowboy:start_http(http, 100,
                                 [{port, Port}],
                                 [ {env, [{dispatch, Dispatch}]},

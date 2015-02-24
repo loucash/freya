@@ -20,7 +20,7 @@
          code_change/3]).
 
 -record(state, {
-          write_delay,
+          writes_delay,
           subscriber,
           timer
          }).
@@ -48,7 +48,7 @@ statements() ->
 
 -spec save(eqm:pub(), data_point()) -> ok | {error, no_capacity}.
 save(Publisher, DP) ->
-    TTL = freya:get_env(raw_ttl, infinity),
+    TTL = freya:get_env(default_ttl, infinity),
     save(Publisher, DP, [{aggregate, raw}, {ttl, TTL}]).
 
 -spec save(eqm:pub(), data_point(), save_options()) -> ok | {error, no_capacity}.
@@ -77,11 +77,11 @@ publisher() ->
     eqm:publisher_info(?CS_WRITERS_PUB).
 
 init(Publisher) ->
-    {ok, BatchSize} = freya:get_env(write_batch_size),
-    {ok, WriteDelay} = freya:get_env(write_delay),
+    {ok, BatchSize}  = freya:get_env(writes_batch_size),
+    {ok, WriteDelay} = freya:get_env(writes_delay),
     {ok, Subscriber} = eqm:start_subscriber(Publisher, BatchSize, notify_full),
     Timer = erlang:send_after(WriteDelay, self(), flush_buffer_timeout),
-    {ok, #state{subscriber=Subscriber, write_delay=WriteDelay, timer=Timer}}.
+    {ok, #state{subscriber=Subscriber, writes_delay=WriteDelay, timer=Timer}}.
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -90,7 +90,7 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({mail, _, Queries0, _}, #state{write_delay=WriteDelay,
+handle_info({mail, _, Queries0, _}, #state{writes_delay=WriteDelay,
                                            subscriber=Subscriber}=State) ->
     Queries = lists:flatten(Queries0),
     batch(Queries),
@@ -102,7 +102,7 @@ handle_info({mail, _, buffer_full}, #state{timer=TimerRef,
     erlang:cancel_timer(TimerRef),
     eqm_sub:active(Subscriber),
     {noreply, State};
-handle_info(flush_buffer_timeout, #state{write_delay=WriteDelay,
+handle_info(flush_buffer_timeout, #state{writes_delay=WriteDelay,
                                          subscriber=Subscriber}=State) ->
     case eqm_sub:info(Subscriber) of
         {ok, [_, {size, 0}]} ->

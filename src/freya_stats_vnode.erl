@@ -35,9 +35,8 @@
 
 -define(TNAME(P), list_to_atom("freya_stats_"++integer_to_list(P)++"_t")).
 -define(DNAME(P), list_to_atom("freya_stats_"++integer_to_list(P)++"_dispatch_t")).
--define(DISPATCH_INTERVAL,  timer:minutes(1)).
--define(PARTIAL_SNAPSHOT,   timer:minutes(1)).
--define(EDGE_LATENCY,       timer:seconds(1)).
+-define(DEFAULT_DISPATCH_INTERVAL, timer:minutes(1)).
+-define(DEFAULT_SNAPSHOT_INTERVAL, timer:minutes(1)).
 
 %%%===================================================================
 %%% API
@@ -66,7 +65,7 @@ repair(IdxNode, Key, Obj) ->
 checkpoint(Metric, Tags, Ts, Aggregate, VClock) ->
     Key       = freya_utils:aggregate_key(Metric, Tags, Ts, Aggregate),
     DocIdx    = riak_core_util:chash_key(Key),
-    {ok, N}   = freya:get_env(n),
+    N         = freya_rollup:replicas(),
     Preflist  = riak_core_apl:get_primary_apl(DocIdx, N, freya_stats),
     Preflist2 = [{Index, Node} || {{Index, Node}, _Type} <- Preflist],
     riak_core_vnode_master:command(Preflist2,
@@ -233,7 +232,7 @@ schedule_dispatch() ->
     erlang:send_after(dispatch_interval(), self(), dispatch).
 
 dispatch_interval() ->
-    freya:get_env(dispatch_interval, ?DISPATCH_INTERVAL).
+    freya:get_env(rollup_dispatch_interval, ?DEFAULT_DISPATCH_INTERVAL).
 
 snapshot_new_obj(Obj, DispatchTid) ->
     schedule_delete(Obj, DispatchTid),
@@ -255,7 +254,8 @@ maybe_schedule_snapshot(#freya_object{key=Key}=Obj, DispatchTid) ->
     end.
 
 next_update() ->
-    tic:now_to_epoch_msecs() + freya:get_env(snapshot_interval, ?PARTIAL_SNAPSHOT).
+    tic:now_to_epoch_msecs() + freya:get_env(rollup_snapshot_interval,
+                                             ?DEFAULT_SNAPSHOT_INTERVAL).
 
 schedule_delete(#freya_object{key=Key}=Obj, DispatchTid) ->
     DeleteAt = next_delete(Obj),
@@ -267,10 +267,10 @@ next_delete(#freya_object{ts=Ts, precision=Precision}) ->
     next_delete(Ts, Precision).
 
 next_delete(Ts, Precision) ->
-    Range       = freya_utils:ms(Precision),
-    MaxDelay    = freya:get_env(max_aggregation_delay, ?MAX_AGGREGATION_DELAY),
-    EdgeLatency = freya:get_env(edge_latency, ?EDGE_LATENCY),
-    Ts + Range + MaxDelay + EdgeLatency.
+    Range        = freya_utils:ms(Precision),
+    EdgeLatency  = freya_rollup:edge_arrival_latency(),
+    VnodeLatency = freya_rollup:vnode_arrival_latency(),
+    Ts + Range + EdgeLatency + VnodeLatency.
 
 update_delete_schedule(#freya_object{key=Key}=Obj, DispatchTid) ->
     Diverged = freya_object:vclocks_diverged(Obj),

@@ -41,7 +41,7 @@ start_cassandra_pools([{Name, Options0}|Pools]) ->
     start_cassandra_pools(Pools).
 
 start_cass_writers_pool(Publisher) ->
-    {ok, WritersCount} = freya:get_env(writers_size),
+    {ok, WritersCount} = freya:get_env(writes_workers_pool_size),
     PoolOptions = [{name, {local, ?CS_WRITERS_POOL}},
                    {size, WritersCount},{max_overflow, 0},
                    {worker_module, freya_writer}],

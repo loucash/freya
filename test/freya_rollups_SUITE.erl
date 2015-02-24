@@ -45,9 +45,9 @@ all() ->
 init_per_suite(Config) ->
     ?th:setup_env(),
     application:load(freya),
-    application:set_env(freya, n, 1),
-    application:set_env(freya, r, 1),
-    application:set_env(freya, w, 1),
+    application:set_env(freya, rollup_replicas, 1),
+    application:set_env(freya, rollup_read_consistency, 1),
+    application:set_env(freya, rollup_write_consistency, 1),
     ok = freya:start(),
     ?th:wait_until_node_ready(),
     Config.

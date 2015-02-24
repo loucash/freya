@@ -40,9 +40,6 @@
 % maximum time period per row: 20 years
 -define(MAX_WEEKS, 1042).
 
-% how long to wait for metrics to aggregate after aggregate end time (in seconds)
--define(MAX_AGGREGATION_DELAY, 300).
-
 % erlcql_cluster pool
 -type pool_name()   :: atom().
 -define(CS_READ_POOL,       freya_read_pool).

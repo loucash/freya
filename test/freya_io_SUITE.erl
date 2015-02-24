@@ -119,7 +119,7 @@ t_write_read_different_rows(_Config) ->
 
 t_read_row_size(_Config) ->
     meck:new(freya_reader, [passthrough]),
-    meck:expect(freya_reader, read_row_size, fun() -> 2 end),
+    meck:expect(freya_reader, reads_row_size, fun() -> 2 end),
     {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"test_read_row_size">>),
     Ts = tic:now_to_epoch_msecs(),
@@ -140,7 +140,7 @@ t_read_row_size(_Config) ->
 
 t_read_row_size_and_desc(_Config) ->
     meck:new(freya_reader, [passthrough]),
-    meck:expect(freya_reader, read_row_size, fun() -> 2 end),
+    meck:expect(freya_reader, reads_row_size, fun() -> 2 end),
     {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"test_read_row_size">>),
     Ts = tic:now_to_epoch_msecs(),
@@ -225,7 +225,7 @@ t_filter_tags_2(_Config) ->
 
 t_sum_aggregate(_Config) ->
     meck:new(freya_reader, [passthrough]),
-    meck:expect(freya_reader, read_row_size, fun() -> 2 end),
+    meck:expect(freya_reader, reads_row_size, fun() -> 2 end),
     {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"t_sum_aggregate">>),
     Ts = freya_utils:floor(tic:now_to_epoch_msecs(), {1, seconds}),
@@ -248,7 +248,7 @@ t_sum_aggregate(_Config) ->
 
 t_sum_aggregate_aligned(_Config) ->
     meck:new(freya_reader, [passthrough]),
-    meck:expect(freya_reader, read_row_size, fun() -> 2 end),
+    meck:expect(freya_reader, reads_row_size, fun() -> 2 end),
     {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"t_sum_aggregate_aligned">>),
     Ts = freya_utils:floor(tic:now_to_epoch_msecs(), {1, seconds}),
@@ -272,7 +272,7 @@ t_sum_aggregate_aligned(_Config) ->
 
 t_sum_aggregate_aligned_different_types(_Config) ->
     meck:new(freya_reader, [passthrough]),
-    meck:expect(freya_reader, read_row_size, fun() -> 2 end),
+    meck:expect(freya_reader, reads_row_size, fun() -> 2 end),
     {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"t_sum_aggregate_aligned_different_types">>),
     Ts = freya_utils:floor(tic:now_to_epoch_msecs(), {1, seconds}),
@@ -308,7 +308,7 @@ t_sum_aggregate_aligned_different_types(_Config) ->
 
 t_avg_aggregate(_Config) ->
     meck:new(freya_reader, [passthrough]),
-    meck:expect(freya_reader, read_row_size, fun() -> 2 end),
+    meck:expect(freya_reader, reads_row_size, fun() -> 2 end),
     {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"t_avg_aggregate">>),
     Ts = freya_utils:floor(tic:now_to_epoch_msecs(), {1, seconds}),
@@ -332,7 +332,7 @@ t_avg_aggregate(_Config) ->
 
 t_avg_aggregate_aligned(_Config) ->
     meck:new(freya_reader, [passthrough]),
-    meck:expect(freya_reader, read_row_size, fun() -> 2 end),
+    meck:expect(freya_reader, reads_row_size, fun() -> 2 end),
     {ok, Publisher} = freya_writer:publisher(),
     MetricName  = ?th:randomize(<<"t_avg_aggregate_aligned">>),
     Ts = freya_utils:floor(tic:now_to_epoch_msecs(), {1, seconds}),
