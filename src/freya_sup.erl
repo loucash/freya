@@ -31,7 +31,8 @@ init([]) ->
                {freya_get_fsm_sup, start_link, []},
                permanent, infinity, supervisor, [freya_get_fsm_sup]},
     {ok, {{one_for_one, 5, 10},
-          [StatsVNode, PushFSM, GetFSM,
+          [?CHILD(freya_rollup_cfg, freya_rollup_cfg, worker, []),
+           StatsVNode, PushFSM, GetFSM,
            ?CHILD(freya_rollup_topsup, freya_rollup_topsup, supervisor, []),
            ?CHILD(freya_snapshot_topsup, freya_snapshot_topsup, supervisor, [])
           ]

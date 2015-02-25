@@ -13,9 +13,6 @@
 -export([metric_names/1, metric_names/2]).
 -export([namespaces/0, namespaces/1]).
 
-% exported for tests
--export([reads_row_size/0]).
-
 -type option()  :: {ns, metric_ns()} |
                    {name, metric_name()} |
                    {start_time, milliseconds()} |
@@ -193,6 +190,7 @@ do_search(Pool, #search{}=S) ->
     Fns = [
         fun(_)    -> search_rows(Pool, S) end,
         fun(Rows) -> decode_rowkeys(Rows) end,
+        fun(Rows) -> filter_row_aggregate(S, Rows) end,
         fun(Rows) -> filter_row_tags(S, Rows) end,
         fun(Rows) -> search_data_points(Pool, S, Rows) end,
         fun(Rows) -> maybe_aggregate_data(S, Rows) end
@@ -221,7 +219,7 @@ do_search_rows(Client, #search{ns=Ns, name=Name, order=Order, source=Source,
     MetricIdx        = freya_blobs:encode_idx({Ns, Name}),
     RowWidth         = freya_utils:row_width(Source),
     StartRowTime     = freya_utils:floor(StartTs, RowWidth),
-    {ok, StartTsBin} = freya_blobs:encode_search_key({Ns, Name}, StartRowTime, raw),
+    {ok, StartTsBin} = freya_blobs:encode_search_key({Ns, Name}, StartRowTime, Source),
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_FROM_START(Order),
                           [MetricIdx, StartTsBin],
@@ -232,8 +230,8 @@ do_search_rows(Client, #search{ns=Ns, name=Name, order=Order, source=Source,
     RowWidth     = freya_utils:row_width(Source),
     StartRowTime = freya_utils:floor(StartTs, RowWidth),
     EndRowTime   = freya_utils:floor(EndTs, RowWidth) + 1,
-    {ok, StartTsBin} = freya_blobs:encode_search_key(Name, StartRowTime, raw),
-    {ok, EndTsBin}   = freya_blobs:encode_search_key(Name, EndRowTime, raw),
+    {ok, StartTsBin} = freya_blobs:encode_search_key(Name, StartRowTime, Source),
+    {ok, EndTsBin}   = freya_blobs:encode_search_key(Name, EndRowTime, Source),
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_IN_RANGE(Order),
                           [MetricIdx, StartTsBin, EndTsBin],
@@ -247,6 +245,21 @@ decode_rowkeys(RowKeys) ->
                 {RowKey, RowProps}
              end, RowKeys),
     {ok, Rows}.
+
+%% @doc Drop rows that does not match aggregate in a search query
+filter_row_aggregate(#search{source=Source}, Rows) ->
+    {ok, lists:filter(match_row_aggregate(Source), Rows)}.
+
+match_row_aggregate(raw) ->
+    fun({_RowKey, RowProps}) ->
+        Precision = proplists:get_value(precision, RowProps),
+        Precision =:= raw
+    end;
+match_row_aggregate({Fun1, Time1}) ->
+    fun({_RowKey, RowProps}) ->
+        {Fun2, Time2} = proplists:get_value(precision, RowProps),
+        Fun1 =:= Fun2 andalso freya_utils:ms(Time1) =:= freya_utils:ms(Time2)
+    end.
 
 %% @doc Drop rows that does not match tags in a search query
 filter_row_tags(#search{tags=[]}, Rows) -> {ok, Rows};
@@ -300,7 +313,7 @@ query_data_points(Row, Client, S) ->
 query_data_points({RowKey, RowProps}=Row, Client,
                   #search{start_time=StartTime, end_time=undefined,
                           order=Order}=S, Acc) ->
-    ReadRowSize     = ?MODULE:reads_row_size(),
+    ReadRowSize     = reads_row_size(),
     StartOffsetBin  = start_time_bin(StartTime, RowProps),
     QueryResult     = erlcql_client:execute(
                         Client, ?SELECT_DATA_FROM_START(Order),
@@ -322,7 +335,7 @@ query_data_points({RowKey, RowProps}=Row, Client,
 query_data_points({RowKey, RowProps}=Row, Client,
                   #search{start_time=StartTime, end_time=EndTime,
                           order=Order, source=Source}=S, Acc) ->
-    ReadRowSize     = ?MODULE:reads_row_size(),
+    ReadRowSize     = reads_row_size(),
     StartOffsetBin  = start_time_bin(StartTime, RowProps),
     EndOffsetBin    = end_time_bin(EndTime, RowProps, Source),
     QueryResult     = erlcql_client:execute(
@@ -378,8 +391,7 @@ end_time_bin(EndTime, RowProps, Source) ->
 
 %% @doc Read configuration parameter: reads_row_size
 reads_row_size() ->
-    {ok, ReadRowSize} = freya:get_env(reads_row_size),
-    ReadRowSize.
+    freya:get_env(reads_row_size, ?DEFAULT_READS_ROW_SIZE).
 
 %% @doc Return a function that can create #data_point
 to_data_point(RowProps0) ->

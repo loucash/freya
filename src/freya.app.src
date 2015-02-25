@@ -22,7 +22,7 @@
                  hope]},
  {mod, {freya_app, []}},
  {env, [
-    {default_ttl, 86400},
+    {default_ttl, 604800},
 
     {http_port, 8666},
     {http_basic_auth_user, <<"test_user">>},
@@ -41,6 +41,12 @@
     {rollup_vnode_arrival_latency, 10000},
     {rollup_dispatch_interval, 60000},
     {rollup_snapshot_interval, 60000},
+
+    {rollup_config, [
+        {default, [
+            {'_', '_', {avg, {15, minutes}}, [{ttl, 86400}]}
+        ]}
+    ]},
 
     {cassandra_keyspace, <<"freya">>},
     {cassandra_read_consistency, quorum},
