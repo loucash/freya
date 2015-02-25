@@ -14,7 +14,7 @@
 -export([namespaces/0, namespaces/1]).
 
 % exported for tests
--export([read_row_size/0]).
+-export([reads_row_size/0]).
 
 -type option()  :: {ns, metric_ns()} |
                    {name, metric_name()} |
@@ -300,7 +300,7 @@ query_data_points(Row, Client, S) ->
 query_data_points({RowKey, RowProps}=Row, Client,
                   #search{start_time=StartTime, end_time=undefined,
                           order=Order}=S, Acc) ->
-    ReadRowSize     = ?MODULE:read_row_size(),
+    ReadRowSize     = ?MODULE:reads_row_size(),
     StartOffsetBin  = start_time_bin(StartTime, RowProps),
     QueryResult     = erlcql_client:execute(
                         Client, ?SELECT_DATA_FROM_START(Order),
@@ -322,7 +322,7 @@ query_data_points({RowKey, RowProps}=Row, Client,
 query_data_points({RowKey, RowProps}=Row, Client,
                   #search{start_time=StartTime, end_time=EndTime,
                           order=Order, source=Source}=S, Acc) ->
-    ReadRowSize     = ?MODULE:read_row_size(),
+    ReadRowSize     = ?MODULE:reads_row_size(),
     StartOffsetBin  = start_time_bin(StartTime, RowProps),
     EndOffsetBin    = end_time_bin(EndTime, RowProps, Source),
     QueryResult     = erlcql_client:execute(
@@ -376,9 +376,9 @@ end_time_bin(EndTime, RowProps, Source) ->
                 end,
     Bin.
 
-%% @doc Read configuration parameter: read_row_size
-read_row_size() ->
-    {ok, ReadRowSize} = freya:get_env(read_row_size),
+%% @doc Read configuration parameter: reads_row_size
+reads_row_size() ->
+    {ok, ReadRowSize} = freya:get_env(reads_row_size),
     ReadRowSize.
 
 %% @doc Return a function that can create #data_point

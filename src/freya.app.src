@@ -22,16 +22,26 @@
                  hope]},
  {mod, {freya_app, []}},
  {env, [
+    {default_ttl, 86400},
+
+    {http_port, 8666},
     {http_basic_auth_user, <<"test_user">>},
     {http_basic_auth_pass, <<"test_pass">>},
 
-    {writers_size, 1000},
-    {write_delay, 800},
-    {read_row_size, 10240},
-    {write_batch_size, 500},
-    {raw_ttl, 86400},
-    {max_aggregation_delay, 300},
-    {http_port, 8666},
+    {writes_delay, 800},
+    {writes_workers_pool_size, 1000},
+    {writes_batch_size, 500},
+
+    {reads_row_size, 10240},
+
+    {rollup_replicas, 3},
+    {rollup_read_consistency,  quorum},
+    {rollup_write_consistency, quorum},
+    {rollup_edge_arrival_latency, 60000},
+    {rollup_vnode_arrival_latency, 10000},
+    {rollup_dispatch_interval, 60000},
+    {rollup_snapshot_interval, 60000},
+
     {cassandra_keyspace, <<"freya">>},
     {cassandra_read_consistency, quorum},
     {cassandra_write_consistency, quorum},
@@ -46,10 +56,6 @@
             {pool_size, 10},
             {pool_overflow, 0}
         ]}
-    ]},
-
-    {n, 3},
-    {r, 2},
-    {w, 2}
+    ]}
  ]}
 ]}.

@@ -64,8 +64,8 @@ start_link(ReqId, From, Metric, Tags, Ts, Aggregate) ->
 %%%===================================================================
 
 init([ReqId, From, Metric, Tags, Ts, Aggregate]) ->
-    {ok, N} = freya:get_env(n),
-    {ok, R} = freya:get_env(r),
+    N = freya_rollup:replicas(),
+    R = freya_rollup:read_consistency(),
     GetLatTimer = quintana:begin_timed(?Q_VNODE_GET_LAT),
     State = #state{req_id=ReqId, coordinator=node(), from=From, n=N, r=R,
                    metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate,

@@ -58,19 +58,27 @@ start_link(ReqId, From, Metric, Tags, Ts, Value, Aggregate) ->
 %%%===================================================================
 
 init([ReqId, From, Metric, Tags, Ts, Value, Aggregate]) ->
-    {ok, N} = freya:get_env(n),
-    {ok, W} = freya:get_env(w),
+    N = freya_rollup:replicas(),
+    W = freya_rollup:write_consistency(),
     PushLatTimer = quintana:begin_timed(?Q_VNODE_PUSH_LAT),
     State = #state{req_id=ReqId, coordinator=node(), from=From, n=N, w=W,
                    metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate,
                    value=Value, lat_timer=PushLatTimer},
     {ok, prepare, State, 0}.
 
-prepare(timeout, #state{metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate, n=N}=State) ->
+prepare(timeout, #state{metric=Metric, tags=Tags, ts=Ts, aggregate=Aggregate,
+                        from=From, n=N, w=W}=State) ->
     Key = freya_utils:aggregate_key(Metric, Tags, Ts, Aggregate),
     DocIdx = riak_core_util:chash_key(Key),
-    Preflist = riak_core_apl:get_apl(DocIdx, N, freya_stats),
-    {next_state, execute, State#state{preflist=Preflist}, 0}.
+    Preflist = riak_core_apl:get_primary_apl(DocIdx, N, freya_stats),
+    Preflist2 = [{Index, Node} || {{Index, Node}, _Type} <- Preflist],
+    case length(Preflist2) >= W of
+        true ->
+            {next_state, execute, State#state{preflist=Preflist2}, 0};
+        false ->
+            From ! {error, not_available},
+            {stop, normal, State}
+    end.
 
 execute(timeout, #state{preflist=PrefList, req_id=ReqId, coordinator=Coordinator,
                         metric=Metric, tags=Tags, ts=Ts, value=Value,
