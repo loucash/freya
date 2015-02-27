@@ -91,8 +91,15 @@ save_dps(Name, Ns, TsVs, Tags) ->
                             DP = ?dp:new({Ns,Name}, Ts, V, Tags),
                             case ?w:save(Pub, DP) of
                                 ok ->
+                                    ok = maybe_rollup({Ns,Name}, Tags, Ts, V),
                                     false;
                                 {error, no_capacity} ->
                                     {true, [Ts,V]}
                             end
                     end, TsVs).
+
+maybe_rollup(Metric, Tags, Ts, V) ->
+    lists:foreach(
+      fun({Aggregate, _Options}) ->
+            freya_rollup:push(Metric, Tags, Ts, V, Aggregate)
+      end, freya_rollup_cfg:match(Metric, Tags)).

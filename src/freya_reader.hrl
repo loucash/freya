@@ -20,3 +20,5 @@
             (desc) -> ?SELECT_DATA_IN_RANGE_DESC end)(Order)).
 
 -define(SELECT_STRING_INDEX,            select_from_string_index).
+
+-define(DEFAULT_READS_ROW_SIZE, 10240).

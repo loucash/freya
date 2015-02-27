@@ -42,8 +42,8 @@ start_link(Metric, Tags, Ts, Aggregate) ->
 %%%===================================================================
 %%% gen_fsm callbacks
 %%%===================================================================
-init([Metric, Tags, Ts, {Fun, Precision}]) ->
-    TTL = infinity, % TODO: pass ttl from the edge or take it from config
+init([Metric, Tags, Ts, {Fun, Precision}=Aggregate]) ->
+    TTL = rollup_ttl(Metric, Tags, Aggregate),
     SnapshotTimer = quintana:begin_timed(?Q_VNODE_SNAPSHOT_LATENCY),
     State = #state{metric=Metric, tags=Tags, ts=Ts,
                    aggregate={Fun, Precision}, ttl=TTL, lat_timer=SnapshotTimer},
@@ -92,3 +92,16 @@ terminate(_Reason, _StateName, #state{lat_timer=SnapshotTimer}) ->
 
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
+
+%%%===================================================================
+%%% Internal
+%%%===================================================================
+rollup_ttl(Name, Tags, {Fun1, Precision1}) ->
+    Aggregates = freya_rollup_cfg:match(Name, Tags),
+    Result = [Opts || {{Fun2, Precision2}, Opts} <- Aggregates, Fun1 =:= Fun2,
+                      freya_utils:ms(Precision1) =:= freya_utils:ms(Precision2)],
+    case Result of
+        [] -> infinity;
+        [Options|_] ->
+            proplists:get_value(ttl, Options, infinity)
+    end.
