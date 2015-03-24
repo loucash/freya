@@ -6,9 +6,10 @@ priv/ui
 logs/*
 erl_crash.dump
 test/*.beam
+dist-tests/*.beam
 stress/*.beam
 ct_log/*
 data
 rel/freya
 _build
-
+coverage
