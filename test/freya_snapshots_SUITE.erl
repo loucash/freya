@@ -100,7 +100,7 @@ t_clear_vnode_memory(_Config) ->
             false       = vclock:equal(CassVClock, VnodeVClock),
             ok
        end,
-       200, 20),
+       100, 50),
 
     ?th:keep_trying(
        ok,
@@ -112,12 +112,12 @@ t_clear_vnode_memory(_Config) ->
             4 = freya_data_point:value(DP),
             ok
        end,
-       200, 20),
+       100, 50),
 
     ?th:keep_trying(
        {error, not_found},
        fun() ->
             freya_get_fsm:get(Metric, Tags, Ts, Aggregate)
        end,
-       200, 20),
+       100, 50),
     ok.

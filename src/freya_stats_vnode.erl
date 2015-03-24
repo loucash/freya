@@ -25,7 +25,7 @@
          encode_handoff_item/2,
          handle_coverage/4,
          handle_exit/3,
-         handle_info/2]).
+         handle_tick/1]).
 
 -record(state, {idx             :: partition(),
                 node            :: node(),
@@ -79,11 +79,10 @@ checkpoint(Metric, Tags, Ts, Aggregate, VClock) ->
 init([Index]) ->
     StatsTid    = ets:new(?TNAME(Index), [{keypos, #freya_object.key}]),
     DispatchTid = ets:new(?DNAME(Index), []),
-    schedule_dispatch(),
     {ok, #state {idx         = Index,
                  node        = node(),
                  stats_table = StatsTid,
-                 dispatch_table = DispatchTid}}.
+                 dispatch_table = DispatchTid}, [{tick, dispatch_interval()}]}.
 
 handle_command({push, {ReqId, Coordinator}, Metric, Tags, Ts, AggrSt, Aggregate},
                _Sender, #state{stats_table=StatsTid,
@@ -134,9 +133,8 @@ handle_command({checkpoint, Key, VClock}, _Sender, #state{stats_table=StatsTid,
             {noreply, State}
     end.
 
-handle_info(dispatch, State) ->
+handle_tick(State) ->
     dispatch(State),
-    schedule_dispatch(),
     {ok, State}.
 
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
@@ -228,9 +226,6 @@ stats_store(Obj, StatsTid) ->
 % Dispatch table:
 % {{update, Key}, ScheduleTime}
 % {{delete, Key}, Diverged, DeleteTime}
-schedule_dispatch() ->
-    erlang:send_after(dispatch_interval(), self(), dispatch).
-
 dispatch_interval() ->
     freya:get_env(rollup_dispatch_interval, ?DEFAULT_DISPATCH_INTERVAL).
 

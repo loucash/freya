@@ -45,7 +45,7 @@ distclean:
 	@rm -rf logs
 	@rm -rf ct_log
 	@rm -rf log
-	@rm -rf _builds
+	@rm -rf _build
 
 dialyze:
 	@dialyzer $(DIALYZER_OPTS) -r ebin
@@ -56,6 +56,10 @@ start:
 test: compile-fast cassandra-freya
 	$(REBAR) -C rebar.test.config get-deps compile
 	$(REBAR) -C rebar.test.config ct skip_deps=true
+
+dist-test: devclean _build/devrels
+	rebar -C rebar.dist.config skip_deps=true compile
+	./riak_test -v -c freya -d dist-tests -F riak_test.config
 
 test-console: test-compile
 	@erlc $(TEST_EPATH) -o test test/*.erl
@@ -98,10 +102,10 @@ release: deps compile data/ring
 relclean:
 	@rm -rf rel/freya
 
-_build/devrels: dev1 dev2 dev3 dev4
+_build/devrels: devclean dev1 dev2 dev3 dev4
+	@cd _build/devrels && git init && git add -f dev* && git commit -m "initial"
 
 dev1 dev2 dev3 dev4:
-	mkdir -p dev
 	./relx -c rel/freya.config -o _build/devrels/$@ --overlay_vars=vars/$@.config
 
 devclean:

@@ -1,6 +1,6 @@
 
 ## Name of the node
--sname {{node}}
+{{node}}
 
 ## Cookie for distributed erlang
 -setcookie freya
