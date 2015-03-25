@@ -76,6 +76,10 @@ travis-dist-test: devclean travis-devrels
 	rebar -C rebar.dist.config skip_deps=true compile
 	./riak_test -v -c freya -d dist-tests -F riak_test.config
 
+single-dist-test:
+	rebar -C rebar.dist.config skip_deps=true compile
+	./riak_test -v -c freya -t $(test) -F riak_test.config
+
 test-console: test-compile
 	@erlc $(TEST_EPATH) -o test test/*.erl
 	$(ERL) -sname $(PROJECT)_test  $(TEST_EPATH) -config sys
