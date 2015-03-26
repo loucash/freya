@@ -32,22 +32,22 @@ confirm() ->
     ?assertEqual(ok, rt:wait_until_nodes_ready([Node])),
 
     %%% Verify node-up behavior
-    %ping_up_test(Node),
-    %attach_direct_up_test(Node),
-    %status_up_test(Node),
-    %console_up_test(Node),
-    %start_up_test(Node),
-    %getpid_up_test(Node),
+    ping_up_test(Node),
+    attach_direct_up_test(Node),
+    status_up_test(Node),
+    console_up_test(Node),
+    start_up_test(Node),
+    getpid_up_test(Node),
 
     %%% Stop the node, Verify node-down behavior
-    %stop_test(Node),
-    %ping_down_test(Node),
-    %attach_down_test(Node),
-    %attach_direct_down_test(Node),
-    %status_down_test(Node),
-    %console_test(Node),
-    %start_test(Node),
-    %getpid_down_test(Node),
+    stop_test(Node),
+    ping_down_test(Node),
+    attach_down_test(Node),
+    attach_direct_down_test(Node),
+    status_down_test(Node),
+    console_test(Node),
+    start_test(Node),
+    getpid_down_test(Node),
 
     pass.
 
@@ -93,6 +93,7 @@ stop_test(Node) ->
 
     {ok, "ok\n"} = rt:riak(Node, "stop"),
 
+    rt:wait_until_unpingable(Node),
     ?assertNot(rt:is_pingable(Node)),
     ok.
 

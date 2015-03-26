@@ -60,6 +60,15 @@ ERTS_PATH=$RUNNER_BASE_DIR/erts-{{erts_vsn}}/bin
 # Setup command to control the node
 NODETOOL="$ERTS_PATH/escript $ERTS_PATH/nodetool $NAME_ARG $COOKIE_ARG"
 
+node_up_check() {
+    RES=`$NODETOOL ping`
+    if [ "$RES" != "pong" ]; then
+        echo "Node is not running!"
+        exit 1
+    fi
+    shift
+}
+
 # Check the first argument for instructions
 case "$1" in
     join)
@@ -113,6 +122,19 @@ case "$1" in
         shift
 
         $NODETOOL rpc freya_console ringready $@
+        ;;
+
+    status)
+        if [ $# -ne 1 ]; then
+            echo "Usage: $SCRIPT status"
+            exit 1
+        fi
+
+        # Make sure the local node is running
+        node_up_check
+
+        shift
+        $NODETOOL rpc freya_console status "$@"
         ;;
 
     *)

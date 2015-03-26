@@ -3,7 +3,8 @@
 -export([join/1,
          leave/1,
          remove/1,
-         ringready/1]).
+         ringready/1,
+         status/1]).
 
 join([NodeStr]) ->
     try
@@ -102,3 +103,23 @@ ringready([]) ->
             io:format("Ringready failed, see log for details~n"),
             error
     end.
+
+status([]) ->
+    try
+        Stats = freya_status:statistics(),
+        StatString = format_stats(Stats,
+                                  ["-------------------------------------------\n",
+                                   io_lib:format("1-minute stats for ~p~n",[node()])]),
+        io:format("~s\n", [StatString])
+    catch
+        Exception:Reason ->
+            lager:error("Status failed ~p:~p", [Exception,
+                                                Reason]),
+            io:format("Status failed, see log for details~n"),
+            error
+    end.
+
+format_stats([], Acc) ->
+    lists:reverse(Acc);
+format_stats([{Stat, V}|T], Acc) ->
+    format_stats(T, [io_lib:format("~p : ~p~n", [Stat, V])|Acc]).
