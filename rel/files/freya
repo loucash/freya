@@ -9,7 +9,6 @@ REL_VSN={{ rel_vsn }}
 ERTS_VSN={{ erts_vsn }}
 REL_DIR=$RELEASE_ROOT_DIR/releases/$REL_VSN
 ERL_OPTS={{ erl_opts }}
-PIPE_DIR=/tmp/erl_pipes/freya/
 
 find_erts_dir() {
     local erts_dir=$RELEASE_ROOT_DIR/erts-$ERTS_VSN
@@ -66,6 +65,9 @@ if [ -z "$NAME_ARG" ]; then
     echo "vm.args needs to have either -name or -sname parameter."
     exit 1
 fi
+node_name=`echo $NAME_ARG | awk '{print $2}'`
+
+PIPE_DIR=/tmp/erl_pipes/freya/$node_name/
 
 # Extract the name type and name from the NAME_ARG for REMSH
 REMSH_TYPE=`echo $NAME_ARG | awk '{print $1}'`
@@ -259,7 +261,6 @@ case "$1" in
             exit $ES
         fi
 
-        node_name=`echo $NAME_ARG | awk '{print $2}'`
         erlang_cookie=`echo $COOKIE_ARG | awk '{print $2}'`
 
         exec $BINDIR/escript $BINDIR/install_upgrade.escript $REL_NAME $node_name $erlang_cookie $2
