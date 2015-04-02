@@ -1,5 +1,11 @@
+env:
+- TEST_SUITE=test
+- TEST_SUITE=travis-dist-test
+- TEST_SUITE=dialyzer-travis
+
+script: make all && make $TEST_SUITE
+
 language: erlang
-script: make all && make test
 otp_release:
     - R16B02
 services:
@@ -9,3 +15,6 @@ cache:
   apt: true
   directories:
     - deps
+
+after_failure:
+- find _build/devrels/dev*/log -name '*.log' | while read filename; do echo "$filename"; cat "$filename"; done
