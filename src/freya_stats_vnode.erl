@@ -133,8 +133,6 @@ handle_command({checkpoint, Key, VClock}, _Sender, #state{stats_table=StatsTid,
             {noreply, State}
     end.
 
-handle_tick({deleted, State}) ->
-    {cancel, State};
 handle_tick(State) ->
     dispatch(State),
     {ok, State}.
