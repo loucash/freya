@@ -72,9 +72,9 @@ dist-test: devclean _build/devrels
 	rebar -C rebar.dist.config skip_deps=true compile
 	./riak_test -v -c freya -d dist-tests -F riak_test.config
 
-travis-dist-test: devclean travis-devrels
+single-dist-test:
 	rebar -C rebar.dist.config skip_deps=true compile
-	./riak_test -v -c freya -d dist-tests -F riak_test.config
+	./riak_test -v -c freya -t $(test) -F riak_test.config
 
 test-console: test-compile
 	@erlc $(TEST_EPATH) -o test test/*.erl
@@ -119,14 +119,6 @@ relclean:
 
 _build/devrels: devclean dev1 dev2 dev3 dev4
 	@cd _build/devrels && git init && git add -f dev* && git commit -m "initial"
-
-travis-devrels: devclean dev1 dev2 dev3 dev4
-	@cd _build/devrels && \
-	git config --global user.email "you@example.com" &&	\
-	git config --global user.name "Your Name" && \
-	git init &&	\
-	git add -f dev* && \
-	git commit -m "initial"
 
 dev1 dev2 dev3 dev4:
 	./relx -c rel/freya.config -o _build/devrels/$@ --overlay_vars=vars/$@.config

@@ -3,7 +3,9 @@
 -export([join/1,
          leave/1,
          remove/1,
-         ringready/1]).
+         ringready/1,
+         status/1,
+         down/1]).
 
 join([NodeStr]) ->
     try
@@ -100,5 +102,52 @@ ringready([]) ->
             lager:error("Ringready failed ~p:~p", [Exception,
                     Reason]),
             io:format("Ringready failed, see log for details~n"),
+            error
+    end.
+
+status([]) ->
+    try
+        Stats = freya_status:statistics(),
+        StatString = format_stats(Stats,
+                                  ["-------------------------------------------\n",
+                                   io_lib:format("1-minute stats for ~p~n",[node()])]),
+        io:format("~s\n", [StatString])
+    catch
+        Exception:Reason ->
+            lager:error("Status failed ~p:~p", [Exception,
+                                                Reason]),
+            io:format("Status failed, see log for details~n"),
+            error
+    end.
+
+format_stats([], Acc) ->
+    lists:reverse(Acc);
+format_stats([{Stat, V}|T], Acc) ->
+    format_stats(T, [io_lib:format("~p : ~p~n", [Stat, V])|Acc]).
+
+down([Node]) ->
+    try
+        case riak_core:down(list_to_atom(Node)) of
+            ok ->
+                io:format("Success: ~p marked as down~n", [Node]),
+                ok;
+            {error, legacy_mode} ->
+                io:format("Cluster is currently in legacy mode~n"),
+                ok;
+            {error, is_up} ->
+                io:format("Failed: ~s is up~n", [Node]),
+                error;
+            {error, not_member} ->
+                io:format("Failed: ~p is not a member of the cluster.~n",
+                          [Node]),
+                error;
+            {error, only_member} ->
+                io:format("Failed: ~p is the only member.~n", [Node]),
+                error
+        end
+    catch
+        Exception:Reason ->
+            lager:error("Down failed ~p:~p", [Exception, Reason]),
+            io:format("Down failed, see log for details~n"),
             error
     end.

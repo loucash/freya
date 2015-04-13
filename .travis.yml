@@ -1,6 +1,10 @@
+before_script:
+- git config --global user.name "John Doe"
+- git config --global user.email johndoe@example.com
+
 env:
 - TEST_SUITE=test
-- TEST_SUITE=travis-dist-test
+- TEST_SUITE=dist-test
 - TEST_SUITE=dialyzer-travis
 
 script: make all && make $TEST_SUITE
