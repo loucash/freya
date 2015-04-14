@@ -1,0 +1,13 @@
+{
+  "name": "my-first-component",
+  "scripts": [
+    "index.js"
+  ],
+  "styles": [
+    "index.css"
+  ],
+  "dependencies": {
+    "masayuki0812/c3": "~0.4.10",
+    "components/jquery": "^2.1.3"
+  }
+}

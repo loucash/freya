@@ -1,0 +1,20 @@
+html, button, input, select, textarea,
+.pure-g [class *= "pure-u"] {
+    font-family: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+#status {
+    display: block;
+    width: 64px; height: 64px;
+    background-image:url(http://preloaders.net/preloaders/272/Girl.gif);
+    background-repeat:no-repeat;
+    background-position:center;
+}
+
+#log { 
+    height: 400px; 
+    width: 100%;
+    font-family: monospace;
+    font-size: 1.2em;
+}
+
