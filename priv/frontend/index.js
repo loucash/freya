@@ -93,6 +93,11 @@ $(document).ready(function() {
                 update_time("query");
                 var x = ["x"];
                 var data = [ns + "/" + metric];
+                if (result.length > 800) {
+                    if (!confirm("You are about to plot over 800 data points. Are you sure?")) {
+                        return false;
+                    }
+                }
                 $.each(result, function(idx) {
                     ts = result[idx][0];
                     val = result[idx][1];
