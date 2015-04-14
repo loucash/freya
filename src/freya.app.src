@@ -24,6 +24,13 @@
  {env, [
     {default_ttl, 604800},
 
+    {cors_domains, [<<"*">>]},
+    {allow_headers, <<"origin, x-requested-with, content-type, accept">>},
+    {allow_methods, <<"GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE">>},
+    {max_age,<<"86400">>},
+    {allow_credentials,<<"true">>},
+    {expose_headers,<<"location">>},
+
     {http_port, 8666},
     {http_basic_auth_user, <<"test_user">>},
     {http_basic_auth_pass, <<"test_pass">>},
