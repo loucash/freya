@@ -73,12 +73,12 @@ resource_exists(Req, State=#state{ns=Ns, name=Name, search_opts=Opts}) ->
 
 -spec ts_or_relative(binary()) -> milliseconds().
 ts_or_relative(Q0) ->
-    Time = try
-               binary_to_integer(Q0)
-           catch error:badarg ->
-                     to_relative_time(Q0)
-           end,
-    freya_utils:ms(Time).
+    try
+        binary_to_integer(Q0)
+    catch error:badarg ->
+              TR = to_relative_time(Q0),
+              tic:now_to_epoch_msecs() - freya_utils:ms(TR)
+    end.
 
 -spec to_relative_time(binary()) -> precision().
 to_relative_time(Q) ->
@@ -110,6 +110,7 @@ to_bool(<<"true">>) -> true;
 to_bool(<<"false">>) -> false.
 
 -spec to_aggregator(binary()) -> aggregate().
+to_aggregator(<<>>) -> undefined;
 to_aggregator(<<"avg">>) -> avg;
 to_aggregator(<<"min">>) -> min;
 to_aggregator(<<"max">>) -> max;
@@ -128,7 +129,7 @@ content_types_provided(Req, State) ->
     {ContentTypes, Req, State}.
 
 allowed_methods(Req, State) ->
-    {[<<"GET">>], Req, State}.
+    {[<<"GET">>, <<"OPTIONS">>], Req, State}.
 
 render_msgpack(Req, State=#state{data_points=Dps}) ->
     Resp = msgpack:pack(Dps, [{format, jsx}]),

@@ -14,6 +14,7 @@ start(_StartType, _StartArgs) ->
     ok = start_cassandra_cluster(),
     ok = start_cass_writers_pool(Publisher),
     ok = freya_rest:start(),
+    ok = start_frontend(),
     case freya_sup:start_link() of
         {ok, Pid} ->
             ok = riak_core:register([{vnode_module, freya_stats_vnode}]),
@@ -46,4 +47,13 @@ start_cass_writers_pool(Publisher) ->
                    {size, WritersCount},{max_overflow, 0},
                    {worker_module, freya_writer}],
     {ok, _} = poolboy:start_link(PoolOptions, Publisher),
+    ok.
+
+start_frontend() ->
+    Dispatch = cowboy_router:compile([
+                                      {'_', [ {"/[...]", cowboy_static,
+                                              {priv_dir, freya, "frontend",
+                                               [{mimetypes, cow_mimetypes, all}]}} ]}
+                                     ]),
+    {ok, _} = cowboy:start_http(frontend, 100, [{port, 8080}], [ {env, [{dispatch, Dispatch}]} ]),
     ok.

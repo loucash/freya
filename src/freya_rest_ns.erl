@@ -24,7 +24,7 @@ content_types_provided(Req, State) ->
     {ContentTypes, Req, State}.
 
 allowed_methods(Req, State) ->
-    {[<<"GET">>], Req, State}.
+    {[<<"GET">>, <<"OPTIONS">>], Req, State}.
 
 resource_exists(Req, State) ->
     {ok, Nss} = freya_reader:namespaces(),

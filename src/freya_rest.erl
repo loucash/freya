@@ -21,6 +21,7 @@ start() ->
 
     Dispatch = cowboy_router:compile([ {'_', Routes} ]),
     Middlewares = [cowboy_router,
+                   freya_cors_middleware,
                    cows_basic_auth_middleware,
                    cowboy_handler],
     Port = freya:get_env(http_port, ?DEFAULT_PORT),

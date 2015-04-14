@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Freya</title>
+        <link rel="stylesheet" href="http://yui.yahooapis.com/pure/0.6.0/pure-min.css">
+        <link rel="stylesheet" href="http://yui.yahooapis.com/pure/0.6.0/grids-responsive-min.css">
+        <link href='http://fonts.googleapis.com/css?family=Roboto' rel='stylesheet' type='text/css'>
+        <link rel="stylesheet" href="build/build.css">
+        <script src="build/build.js"></script>
+    </head>
+    <body>
+        <div class="content">
+            <div class="pure-g">
+                <div class="pure-u-3-24"></div>
+                <div class="pure-u-1-24">
+                    <div id="preloader"><div id="status">&nbsp;</div></div>
+                </div>
+                <div class="pure-u-15-24">
+                    <h1>Freya</h1>
+                </div>
+                <div class="pure-u-3-24">
+                    <span id="time"></span>
+                </div>
+            </div>
+            <div class="pure-g">
+                <div class="pure-u-3-24"></div>
+                <div class="pure-u-18-24">
+                    <div id="chart"></div>
+                </div>
+                <div class="pure-u-3-24"></div>
+            </div>
+            <div class="pure-g">
+                <div class="pure-u-3-24"></div>
+                <div class="pure-u-7-24">
+                    <form class="pure-form pure-form-aligned" action="#" id="metrics-form">
+                        <fieldset>
+                            <legend>Chart metrics</legend>
+                            <div class="pure-control-group">
+                                <label for="namespace">Namespace</label>
+                                <select id="namespace">
+                                </select>
+                            </div>
+
+                            <div class="pure-control-group">
+                                <label for="metric">Metric</label>
+                                <select id="metric">
+                                </select>
+                            </div>
+
+
+                            <div class="pure-control-group">
+                                <label for="n">Start time</label>
+                                <input type="text" id="n" value="1"/>
+                                <select id="unit">
+                                    <option value="seconds">seconds</option>
+                                    <option value="minutes">minutes</option>
+                                    <option value="hours">hours</option>
+                                    <option value="days">days</option>
+                                    <option value="weeks">weeks</option>
+                                </select>
+                            </div>
+
+                            <div class="pure-control-group">
+                                <label for="aggregate">Aggregate</label>
+                                <select id="aggregate">
+                                    <option value="">None</option>
+                                    <option value="avg">avg</option>
+                                    <option value="max">max</option>
+                                    <option value="min">min</option>
+                                    <option value="sum">sum</option>
+                                </select>
+                            </div>
+
+                            <div class="pure-control-group">
+                                <label for="n2">Sampling:</label>
+                                <input type="text" id="n2"/>
+                                <select id="sampling_unit">
+                                    <option value="seconds">seconds</option>
+                                    <option value="minutes">minutes</option>
+                                    <option value="hours">hours</option>
+                                    <option value="days">days</option>
+                                    <option value="weeks">weeks</option>
+                                </select>
+                            </div>
+
+                            <div class="pure-control-group">
+                                <label for="stacked">
+                                    <input id="stacked" type="checkbox" checked="checked">
+                                    Stacked
+                                </label>
+                                <button id="graph" class="pure-button pure-button-primary">Fetch &amp; graph</button>
+                                <button id="clear-graph" class="pure-button">Clear</button>
+                            </div>
+
+
+                        </fieldset>
+                    </form>
+                </div>
+                <div class="pure-u-1-24"></div>
+                <div class="pure-u-5-24">
+                    <form class="pure-form pure-form-aligned" action="#" id="spam-form">
+                        <fieldset>
+                            <legend>Spam random metrics</legend>
+                            <div class="pure-control-group">
+                                <label for="spam_ns">Namespace</label>
+                                <input type="text" id="spam_ns" value="test_frontend"/>
+                            </div>
+
+                            <div class="pure-control-group">
+                                <label for="spam_metric">Metric name</label>
+                                <input type="text" id="spam_metric" value="cpu_load"/>
+                            </div>
+
+                            <div class="pure-control-group">
+                                <label for="spam_number">Number of metrics</label>
+                                <input type="text" id="spam_number" value="100"/>
+                            </div>
+
+                            <div class="pure-control-group">
+                                <label for="spam_interval">Spam interval (ms)</label>
+                                <input type="text" id="spam_interval" value="1000"/>
+                            </div>
+                            <div class="pure-control-group">
+                                <label for="spam-submit">&nbsp;</label>
+                                <button id="spam-submit" type="submit" class="pure-button pure-button-primary">Spam</button>
+                            </div>
+                        </fieldset>
+                    </form>
+                </div>
+
+                <div class="pure-u-1-24"></div>
+                <div class="pure-u-4-24">
+                    <form class="pure-form pure-form-stacked" action="#" id="log-form">
+                        <fieldset>
+                            <legend>API Call Log</legend>
+                            <textarea class="pure-input-1-1" id="log"></textarea>
+                            <button type="submit" class="pure-button pure-button-primary">Clear</button>
+                        </fieldset>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
