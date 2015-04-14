@@ -141,11 +141,6 @@ $(document).ready(function() {
         feed_metrics(ns);
     });
 
-    $("#metrics-form").submit(function() {
-        graph();
-        return false;
-    });
-
     $("#spam-form").submit(function() {
         spam();
         return false;
@@ -153,6 +148,16 @@ $(document).ready(function() {
 
     $("#log-form").submit(function() {
         $('#log').empty();
+        return false;
+    });
+
+    $("#clear-graph").on("click", function() {
+        init_chart();
+        return false;
+    });
+
+    $("#graph").on("click", function() {
+        graph();
         return false;
     });
 
