@@ -40,7 +40,7 @@ content_types_accepted(Req, State) ->
     {ContentTypes, Req, State}.
 
 allowed_methods(R0, State) ->
-    {[<<"GET">>, <<"POST">>], R0, State}.
+    {[<<"GET">>, <<"POST">>, <<"OPTIONS">>], R0, State}.
 
 resource_exists(Req, State=#state{ns = Ns, payload = <<>>}) ->
     case freya_reader:metric_names(Ns) of

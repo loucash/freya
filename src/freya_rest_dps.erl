@@ -128,7 +128,7 @@ content_types_provided(Req, State) ->
     {ContentTypes, Req, State}.
 
 allowed_methods(Req, State) ->
-    {[<<"GET">>], Req, State}.
+    {[<<"GET">>, <<"OPTIONS">>], Req, State}.
 
 render_msgpack(Req, State=#state{data_points=Dps}) ->
     Resp = msgpack:pack(Dps, [{format, jsx}]),
