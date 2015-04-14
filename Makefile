@@ -83,6 +83,11 @@ test-console: test-compile
 cassandra-freya:
 	$(CQLSH) < ./priv/schema.cql
 
+frontend: priv/build
+
+priv/build:
+	@cd priv/frontend && component build
+
 dev: compile-fast dev-console
 
 dev-clean: cassandra-freya dev
