@@ -88,9 +88,9 @@ merge_values(sum, #val{value=S0, points=C0}, #val{value=S1, points=C1}) ->
     #val{value=S0+S1, points=C0+C1};
 merge_values(avg, #val{value=S0, points=C0}, #val{value=S1, points=C1}) ->
     {Accumulate, _} = freya_utils:aggregator_funs(avg),
-    S = lists:foldl(fun(_, Acc) -> Accumulate(S0, Acc) end, {S1, C1},
-                    lists:seq(1, C0)),
-    #val{value=S, points=C0+C1};
+    {S, C} = lists:foldl(fun(_, Acc) -> Accumulate(S0, Acc) end, {S1, C1},
+                         lists:seq(1, C0)),
+    #val{value=S, points=C};
 merge_values(max, #val{value=S0, points=C0}, #val{value=S1, points=C1}) when S0 >= S1 ->
     #val{value=S0, points=C0+C1};
 merge_values(max, #val{value=S0, points=C0}, #val{value=S1, points=C1}) when S0 < S1 ->
