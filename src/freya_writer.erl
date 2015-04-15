@@ -36,11 +36,13 @@ statements() ->
       <<"INSERT INTO data_points (rowkey, offset, value) "
         "VALUES (?, ?, ?);">>},
      {?INSERT_ROW_INDEX,
-      <<"INSERT INTO row_key_index (metric_name, rowkey, unused) "
-        "VALUES (?, ?, ?);">>},
+      <<"INSERT INTO row_key_index "
+        "(metric_idx, aggregate_fun, aggregate_param1, aggregate_param2, rowtime, rowkey) "
+        "VALUES (?, ?, ?, ?, ?, ?);">>},
      {?INSERT_ROW_INDEX_TTL,
-      <<"INSERT INTO row_key_index (metric_name, rowkey, unused) "
-        "VALUES (?, ?, ?) USING TTL ?;">>},
+      <<"INSERT INTO row_key_index "
+        "(metric_idx, aggregate_fun, aggregate_param1, aggregate_param2, rowtime, rowkey) "
+        "VALUES (?, ?, ?, ?, ?, ?) USING TTL ?;">>},
      {?INSERT_STRING_INDEX,
       <<"INSERT INTO string_index (type, value, unused) "
         "VALUES (?, ?, ?);">>}
@@ -146,9 +148,10 @@ save_data_point_queries(DP, TTL, DataPrecision) ->
     Ns   = freya_data_point:ns(DP),
     Name = freya_data_point:name(DP),
     Tags = freya_data_point:tags(DP),
+    Ts   = freya_data_point:ts(DP),
     {ok, {RowKey, Offset, Value}} = freya_data_point:encode(DP, DataPrecision),
     [insert_data_point(RowKey, Offset, Value, TTL),
-     insert_row_index({Ns, Name}, RowKey, TTL, DataPrecision),
+     insert_row_index({Ns, Name}, DataPrecision, Ts, RowKey, TTL),
      insert_string_index(?ROW_KEY_METRIC_NAMES(Ns), Name),
      insert_string_index(?ROW_KEY_NAMESPACES, Ns)]
     ++ lists:flatmap(
@@ -165,11 +168,17 @@ insert_data_point(RowKey, Offset, Value, infinity) ->
 insert_data_point(RowKey, Offset, Value, TTL) when is_integer(TTL) ->
     {?INSERT_DATA_POINT_TTL, [RowKey, Offset, Value, TTL]}.
 
-insert_row_index({_, _}=N, RowKey, infinity, _DataPrecision) ->
-    {?INSERT_ROW_INDEX, [freya_blobs:encode_idx(N), RowKey, <<0>>]};
-insert_row_index({_, _}=N, RowKey, TTL, DataPrecision) ->
+insert_row_index({_, _}=N, DataPrecision, Ts, RowKey, infinity) ->
+    {Fun, Arg1, Arg2} = freya_blobs:encode_data_precision(DataPrecision),
+    RowTime = freya_blobs:encode_row_time(Ts, DataPrecision),
+    {?INSERT_ROW_INDEX, [freya_blobs:encode_idx(N), Fun, Arg1, Arg2,
+                         RowTime, RowKey]};
+insert_row_index({_, _}=N, DataPrecision, Ts, RowKey, TTL) ->
+    {Fun, Arg1, Arg2} = freya_blobs:encode_data_precision(DataPrecision),
+    RowTime = freya_blobs:encode_row_time(Ts, DataPrecision),
     RowIndexTTL = row_index_ttl(TTL, DataPrecision),
-    {?INSERT_ROW_INDEX_TTL, [freya_blobs:encode_idx(N), RowKey, <<0>>, RowIndexTTL]}.
+    {?INSERT_ROW_INDEX_TTL, [freya_blobs:encode_idx(N), Fun, Arg1, Arg2,
+                             RowTime, RowKey, RowIndexTTL]}.
 
 row_index_ttl(TTL, DataPrecision) ->
     RowWidth    = freya_utils:row_width(DataPrecision),

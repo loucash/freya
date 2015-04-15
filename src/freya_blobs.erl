@@ -5,12 +5,15 @@
          encode_timestamp/1,
          encode_timestamp/2,
          encode_offset/1,
-         encode_value/2]).
+         encode_value/2,
+         encode_data_precision/1,
+         encode_row_time/1,
+         encode_row_time/2]).
 -export([decode_rowkey/1,
          decode_timestamp/2,
          decode_offset/1,
          decode_value/2]).
--export([encode_search_key/3]).
+-export([calculate_row_time/2]).
 -export([encode_idx/1]).
 
 -include("freya.hrl").
@@ -33,8 +36,7 @@ encode_rowkey(Metric, Ts, Type, Tags) ->
     encode_rowkey(Metric, Ts, Type, Tags, raw).
 
 encode_rowkey({Ns,Name}, Ts, Type, Tags0, DataPrecision) ->
-    RowWidth   = freya_utils:row_width(DataPrecision),
-    RowTime    = freya_utils:floor(Ts, RowWidth),
+    RowTime    = encode_row_time(Ts, DataPrecision),
     NsLength   = byte_size(Ns),
     NameLength = byte_size(Name),
     {AggregateFun,
@@ -49,10 +51,10 @@ encode_rowkey({Ns,Name}, Ts, Type, Tags0, DataPrecision) ->
             Ns/binary,
             NameLength:8/integer,
             Name/binary,
-            AggregateFun:8/integer,
-            AggregateParam1:64/integer,
-            AggregateParam2:64/integer,
-            RowTime:64/integer,
+            AggregateFun/binary,
+            AggregateParam1/binary,
+            AggregateParam2/binary,
+            RowTime/binary,
             DataType:8/integer,
             TagsLength:16/integer,
             Tags/binary>>,
@@ -93,8 +95,7 @@ encode_timestamp(Ts) ->
 
 -spec encode_timestamp(milliseconds(), data_precision()) -> {ok, binary()}.
 encode_timestamp(Ts, DataPrecision) ->
-    RowWidth = freya_utils:row_width(DataPrecision),
-    RowTime  = freya_utils:floor(Ts, RowWidth),
+    RowTime  = calculate_row_time(Ts, DataPrecision),
     Offset   = Ts - RowTime,
     encode_offset(Offset).
 
@@ -123,37 +124,27 @@ decode_value(Value, long) ->
 decode_value(<<Value/float>>, double) ->
     {ok, Value}.
 
--spec encode_search_key(metric(), milliseconds(), data_precision()) -> {ok, binary()}.
-encode_search_key({Ns,Name}, Ts, DataPrecision) ->
-    NsLength = byte_size(Ns),
-    NameLength = byte_size(Name),
-    {AggregateFun,
-     AggregateParam1,
-     AggregateParam2} = encode_data_precision(DataPrecision),
-
-    Bin = <<?MODEL_VERSION:8/integer,
-            NsLength:8/integer,
-            Ns/binary,
-            NameLength:8/integer,
-            Name/binary,
-            AggregateFun:8/integer,
-            AggregateParam1:64/integer,
-            AggregateParam2:64/integer,
-            Ts:64/integer>>,
-    {ok, Bin};
-encode_search_key(Name, Ts, DataPrecision)
-  when is_binary(Name) ->
-    encode_search_key(freya_utils:sanitize_name(Name), Ts, DataPrecision).
-
 -spec encode_idx(metric()) -> binary().
 encode_idx({Ns, Name}) ->
     <<Ns/binary, Name/binary>>.
 
+calculate_row_time(Ts, DataPrecision) ->
+    RowWidth = freya_utils:row_width(DataPrecision),
+    freya_utils:floor(Ts, RowWidth).
+
+encode_row_time(RowTime) ->
+    <<RowTime:64/integer>>.
+
+encode_row_time(Ts, DataPrecision) ->
+    RowTime = calculate_row_time(Ts, DataPrecision),
+    encode_row_time(RowTime).
 
 encode_data_precision(raw) ->
-    {?RAW_DATA, ?RAW_DATA, ?RAW_DATA};
+    {<<?RAW_DATA:8/integer>>, <<?RAW_DATA:64/integer>>, <<?RAW_DATA:64/integer>>};
 encode_data_precision({Fun, Precision}) ->
-    {encode_aggregate_fun(Fun), freya_utils:ms(Precision), ?RAW_DATA}.
+    {<<(encode_aggregate_fun(Fun)):8/integer>>,
+     <<(freya_utils:ms(Precision)):64/integer>>,
+     <<?RAW_DATA:64/integer>>}.
 
 decode_data_precision(?RAW_DATA, _, _) -> raw;
 decode_data_precision(Fun, Precision, _) ->
