@@ -24,6 +24,7 @@
  {env, [
     {default_ttl, 604800},
 
+    {frontend_port, 8080},
     {cors_domains, [<<"*">>]},
     {allow_headers, <<"origin, x-requested-with, content-type, accept">>},
     {allow_methods, <<"GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE">>},
