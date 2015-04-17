@@ -44,16 +44,20 @@ statements() ->
     [
      {?SELECT_ROWS_FROM_START_ASC,
       <<"SELECT rowkey FROM row_key_index WHERE "
-        "metric_name = ? AND rowkey >= ? ORDER BY rowkey ASC;">>},
+        "metric_idx = ? AND aggregate_fun = ? AND aggregate_param1 = ? AND "
+        "aggregate_param2 = ? AND rowtime >= ? ORDER BY rowtime ASC;">>},
      {?SELECT_ROWS_FROM_START_DESC,
       <<"SELECT rowkey FROM row_key_index WHERE "
-        "metric_name = ? AND rowkey >= ? ORDER BY rowkey DESC;">>},
+        "metric_idx = ? AND aggregate_fun = ? AND aggregate_param1 = ? AND "
+        "aggregate_param2 = ? AND rowtime >= ? ORDER BY rowtime DESC;">>},
      {?SELECT_ROWS_IN_RANGE_ASC,
       <<"SELECT rowkey FROM row_key_index WHERE "
-        "metric_name = ? AND rowkey >= ? AND rowkey <= ? ORDER BY rowkey ASC;">>},
+        "metric_idx = ? AND aggregate_fun = ? AND aggregate_param1 = ? AND "
+        "aggregate_param2 = ? AND rowtime >= ? AND rowtime <= ? ORDER BY rowtime ASC;">>},
      {?SELECT_ROWS_IN_RANGE_DESC,
       <<"SELECT rowkey FROM row_key_index WHERE "
-        "metric_name = ? AND rowkey >= ? AND rowkey <= ? ORDER BY rowkey DESC;">>},
+        "metric_idx = ? AND aggregate_fun = ? AND aggregate_param1 = ? AND "
+        "aggregate_param2 = ? AND rowtime >= ? AND rowtime <= ? ORDER BY rowtime DESC;">>},
      {?SELECT_DATA_FROM_START_ASC,
       <<"SELECT offset, value FROM data_points WHERE "
         "rowkey = ? AND offset >= ? ORDER BY offset ASC  LIMIT ?;">>},
@@ -190,7 +194,6 @@ do_search(Pool, #search{}=S) ->
     Fns = [
         fun(_)    -> search_rows(Pool, S) end,
         fun(Rows) -> decode_rowkeys(Rows) end,
-        fun(Rows) -> filter_row_aggregate(S, Rows) end,
         fun(Rows) -> filter_row_tags(S, Rows) end,
         fun(Rows) -> search_data_points(Pool, S, Rows) end,
         fun(Rows) -> maybe_aggregate_data(S, Rows) end
@@ -216,25 +219,23 @@ search_rows(Pool, Search) ->
 %% @doc Return query execute result
 do_search_rows(Client, #search{ns=Ns, name=Name, order=Order, source=Source,
                                start_time=StartTs, end_time=undefined}) ->
-    MetricIdx        = freya_blobs:encode_idx({Ns, Name}),
-    RowWidth         = freya_utils:row_width(Source),
-    StartRowTime     = freya_utils:floor(StartTs, RowWidth),
-    {ok, StartTsBin} = freya_blobs:encode_search_key({Ns, Name}, StartRowTime, Source),
+    MetricIdx         = freya_blobs:encode_idx({Ns, Name}),
+    {Fun, Arg1, Arg2} = freya_blobs:encode_data_precision(Source),
+    StartTsBin        = freya_blobs:encode_row_time(StartTs, Source),
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_FROM_START(Order),
-                          [MetricIdx, StartTsBin],
+                          [MetricIdx, Fun, Arg1, Arg2, StartTsBin],
                           [read_consistency()]);
 do_search_rows(Client, #search{ns=Ns, name=Name, order=Order, source=Source,
                                start_time=StartTs, end_time=EndTs}) ->
-    MetricIdx    = freya_blobs:encode_idx({Ns, Name}),
-    RowWidth     = freya_utils:row_width(Source),
-    StartRowTime = freya_utils:floor(StartTs, RowWidth),
-    EndRowTime   = freya_utils:floor(EndTs, RowWidth) + 1,
-    {ok, StartTsBin} = freya_blobs:encode_search_key(Name, StartRowTime, Source),
-    {ok, EndTsBin}   = freya_blobs:encode_search_key(Name, EndRowTime, Source),
+    MetricIdx         = freya_blobs:encode_idx({Ns, Name}),
+    {Fun, Arg1, Arg2} = freya_blobs:encode_data_precision(Source),
+    StartTsBin        = freya_blobs:encode_row_time(StartTs, Source),
+    EndRowTime        = freya_blobs:calculate_row_time(EndTs, Source) + 1,
+    EndTsBin          = freya_blobs:encode_row_time(EndRowTime),
     erlcql_client:execute(Client,
                           ?SELECT_ROWS_IN_RANGE(Order),
-                          [MetricIdx, StartTsBin, EndTsBin],
+                          [MetricIdx, Fun, Arg1, Arg2, StartTsBin, EndTsBin],
                           [read_consistency()]).
 
 %% @doc Return tuples with original and decoded rowkey
@@ -245,21 +246,6 @@ decode_rowkeys(RowKeys) ->
                 {RowKey, RowProps}
              end, RowKeys),
     {ok, Rows}.
-
-%% @doc Drop rows that does not match aggregate in a search query
-filter_row_aggregate(#search{source=Source}, Rows) ->
-    {ok, lists:filter(match_row_aggregate(Source), Rows)}.
-
-match_row_aggregate(raw) ->
-    fun({_RowKey, RowProps}) ->
-        Precision = proplists:get_value(precision, RowProps),
-        Precision =:= raw
-    end;
-match_row_aggregate({Fun1, Time1}) ->
-    fun({_RowKey, RowProps}) ->
-        {Fun2, Time2} = proplists:get_value(precision, RowProps),
-        Fun1 =:= Fun2 andalso freya_utils:ms(Time1) =:= freya_utils:ms(Time2)
-    end.
 
 %% @doc Drop rows that does not match tags in a search query
 filter_row_tags(#search{tags=[]}, Rows) -> {ok, Rows};

@@ -10,15 +10,23 @@ USE freya;
 CREATE TABLE data_points (
   rowkey blob,
   offset blob,
-  value blob,
+  value  blob,
   PRIMARY KEY (rowkey, offset)
 ) WITH read_repair_chance=0.100000;
 
 CREATE TABLE row_key_index (
-  metric_name blob,
-  rowkey blob,
-  unused blob,
-  PRIMARY KEY (metric_name, rowkey)
+  metric_idx        blob,
+  aggregate_fun     blob,
+  aggregate_param1  blob,
+  aggregate_param2  blob,
+  rowtime           blob,
+  rowkey            blob,
+  PRIMARY KEY ((metric_idx,
+                aggregate_fun,
+                aggregate_param1,
+                aggregate_param2),
+               rowtime,
+               rowkey)
 ) WITH read_repair_chance=0.100000;
 
 CREATE TABLE string_index (
