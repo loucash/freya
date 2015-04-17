@@ -50,10 +50,11 @@ start_cass_writers_pool(Publisher) ->
     ok.
 
 start_frontend() ->
+    FrontendPort = freya:get_env(frontend_port, 8080),
     Dispatch = cowboy_router:compile([
                                       {'_', [ {"/[...]", cowboy_static,
                                               {priv_dir, freya, "frontend",
                                                [{mimetypes, cow_mimetypes, all}]}} ]}
                                      ]),
-    {ok, _} = cowboy:start_http(frontend, 100, [{port, 8080}], [ {env, [{dispatch, Dispatch}]} ]),
+    {ok, _} = cowboy:start_http(frontend, 100, [{port, FrontendPort}], [ {env, [{dispatch, Dispatch}]} ]),
     ok.
